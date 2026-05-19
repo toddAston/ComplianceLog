@@ -1,10 +1,12 @@
 import {
+  useAllApplicationRecords,
   useAllApplicators,
   useAllFarms,
   useAllFields,
   useAllOrganizations,
   useAllProducts,
 } from "./db/queries";
+import { DraftApplicationRecordForm } from "./ui/application-record/DraftApplicationRecordForm";
 
 function App() {
   const organizations = useAllOrganizations();
@@ -12,16 +14,50 @@ function App() {
   const fields = useAllFields();
   const applicators = useAllApplicators();
   const products = useAllProducts();
+  const applicationRecords = useAllApplicationRecords();
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "1.5rem", maxWidth: 720, margin: "0 auto" }}>
-      <h1>FieldLog — Seed Debug</h1>
+      <h1>FieldLog</h1>
       <p style={{ color: "#555" }}>
-        Read-only view of seeded reference data. Confirms IndexedDB persistence and Dexie reactivity.
+        Offline-first pesticide application recordkeeping. This screen captures
+        a contractor draft locally; submission and manager review are not yet
+        wired in.
       </p>
 
-      <section>
-        <h2>Organizations ({organizations.length})</h2>
+      <section style={{ marginTop: "1.5rem" }}>
+        <h2>New application record (draft)</h2>
+        <DraftApplicationRecordForm />
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Drafts ({applicationRecords.length})</h2>
+        {applicationRecords.length === 0 ? (
+          <p style={{ color: "#888" }}>No drafts yet.</p>
+        ) : (
+          <ul>
+            {applicationRecords.map((r) => (
+              <li key={r.id}>
+                <code style={{ color: "#888" }}>{r.id.slice(0, 8)}</code>
+                {" — "}
+                {r.contractorInputs.fieldName} /{" "}
+                {r.contractorInputs.productName} —{" "}
+                <span>{r.workflowStatus}</span>
+                {" / "}
+                <span>{r.syncStatus}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section style={{ marginTop: "2rem", borderTop: "1px solid #eee", paddingTop: "1rem" }}>
+        <h2 style={{ color: "#555" }}>Seed debug</h2>
+        <p style={{ color: "#888", fontSize: "0.85rem" }}>
+          Read-only view of seeded reference data. Confirms IndexedDB persistence and Dexie reactivity.
+        </p>
+
+        <h3>Organizations ({organizations.length})</h3>
         <ul>
           {organizations.map((o) => (
             <li key={o.id}>
@@ -29,19 +65,15 @@ function App() {
             </li>
           ))}
         </ul>
-      </section>
 
-      <section>
-        <h2>Farms ({farms.length})</h2>
+        <h3>Farms ({farms.length})</h3>
         <ul>
           {farms.map((f) => (
             <li key={f.id}>{f.name}</li>
           ))}
         </ul>
-      </section>
 
-      <section>
-        <h2>Fields ({fields.length})</h2>
+        <h3>Fields ({fields.length})</h3>
         <ul>
           {fields.map((f) => (
             <li key={f.id}>
@@ -51,10 +83,8 @@ function App() {
             </li>
           ))}
         </ul>
-      </section>
 
-      <section>
-        <h2>Applicators ({applicators.length})</h2>
+        <h3>Applicators ({applicators.length})</h3>
         <ul>
           {applicators.map((a) => (
             <li key={a.id}>
@@ -63,10 +93,8 @@ function App() {
             </li>
           ))}
         </ul>
-      </section>
 
-      <section>
-        <h2>Products ({products.length})</h2>
+        <h3>Products ({products.length})</h3>
         <ul>
           {products.map((p) => (
             <li key={p.id}>

@@ -1,6 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./fieldlogDb";
 import type {
+  ApplicationRecord,
   Applicator,
   Farm,
   FieldSite,
@@ -22,3 +23,10 @@ export const useAllApplicators = () =>
 
 export const useAllProducts = () =>
   useLiveQuery(() => db.products.toArray(), [], [] as Product[]);
+
+export const useAllApplicationRecords = () =>
+  useLiveQuery(
+    () => db.applicationRecords.orderBy("system.createdAt").reverse().toArray(),
+    [],
+    [] as ApplicationRecord[]
+  );
