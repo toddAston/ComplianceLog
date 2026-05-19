@@ -1,0 +1,63 @@
+%% FieldLog Mermaid Diagrams v0.1
+
+%% 1. Golden Happy Path
+flowchart TD
+    A[Contractor opens app]
+    B[Selects Farm / Field]
+    C[Selects pesticide product]
+    D[Enters application details]
+    E[App captures or records weather, time, location, product, etc.]
+    F[Contractor attests to application form]
+    G[Record is submitted]
+    H[Manager reviews]
+    I[Record becomes locked]
+    J[Export is available]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J
+
+%% 2. Application Record Lifecycle
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Submitted
+    Submitted --> PendingReview
+    PendingReview --> Accepted
+    Accepted --> Locked
+    Locked --> Exported
+
+    PendingReview --> NeedsCorrection
+    NeedsCorrection --> DraftCorrection
+    DraftCorrection --> Submitted
+
+    Exported --> [*]
+
+%% 3. Core Relationships
+flowchart LR
+    Org[Organization] --> Farms[Farms]
+    Farms --> Fields[Fields / Sites]
+    Fields --> Records[Application Records]
+
+    Catalog[Product Catalog] --> Product[Product]
+    Product --> Records
+    Records --> Snapshot[Product Snapshot]
+
+    Contractor[Contractor Company] --> Applicators[Applicators]
+    Applicators --> Records
+
+    Records --> Events[Record Events]
+    Records --> Review[Manager Review]
+    Records --> Correction[Corrections]
+    Records --> Export[Exports]
+
+%% 4. ERD Draft
+erDiagram
+    ORGANIZATIONS ||--o{ FARMS : owns
+    FARMS ||--o{ FIELDS : contains
+    ORGANIZATIONS ||--o{ CONTRACTOR_COMPANIES : works_with
+    CONTRACTOR_COMPANIES ||--o{ APPLICATORS : has
+    PRODUCT_CATALOG_VERSIONS ||--o{ PRODUCTS : versions
+    FIELDS ||--o{ APPLICATION_RECORDS : receives
+    APPLICATORS ||--o{ APPLICATION_RECORDS : submits
+    PRODUCTS ||--o{ APPLICATION_RECORDS : referenced_by
+    APPLICATION_RECORDS ||--|| APPLICATION_PRODUCT_SNAPSHOTS : contains
+    APPLICATION_RECORDS ||--o| APPLICATION_REVIEWS : reviewed_by
+    APPLICATION_RECORDS ||--o{ APPLICATION_RECORD_EVENTS : logs

@@ -1,0 +1,60 @@
+{
+  "applicationRecordId": "app_001",
+  "status": "draft",
+
+  "applicator": {
+    "name": "",
+    "company": "",
+    "certificationNumber": ""
+  },
+
+  "location": {
+    "farmName": "",
+    "fieldName": "",
+    "cropOrSite": "",
+    "acresTreated": null
+  },
+
+  "product": {
+    "productName": "",
+    "epaRegistrationNumber": "",
+    "restrictedUse": null
+  },
+
+  "application": {
+    "applicationDate": "",
+    "startTime": "",
+    "endTime": "",
+    "rateApplied": "",
+    "totalAmountApplied": "",
+    "applicationMethod": ""
+  },
+
+  "conditions": {
+    "windSpeedMph": null,
+    "windDirection": "",
+    "temperatureF": null,
+    "weatherNotes": ""
+  },
+
+  "attestation": {
+    "submittedBy": "",
+    "submittedAt": "",
+    "signatureCaptured": false
+  },
+
+  "review": {
+    "reviewStatus": "not_reviewed",
+    "reviewedBy": "",
+    "reviewedAt": "",
+    "reviewNotes": ""
+  },
+
+  "audit": {
+    "createdOffline": false,
+    "createdAt": "",
+    "updatedAt": "",
+    "lockedAt": "",
+    "catalogVersion": ""
+  }
+}

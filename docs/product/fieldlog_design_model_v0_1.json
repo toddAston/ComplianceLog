@@ -1,0 +1,313 @@
+{
+  "version": "0.1",
+  "app": {
+    "name": "FieldLog",
+    "description": "Mobile-first, offline-capable pesticide application recordkeeping app.",
+    "frame": "Offline evidence-capture app for pesticide application records; pesticide/RUP/product catalog is supporting reference data."
+  },
+  "goldenHappyPath": [
+    "Contractor opens app",
+    "Selects Farm / Field",
+    "Selects pesticide product",
+    "Enters application details",
+    "App captures or records weather, time, location, product, etc.",
+    "Contractor attests to application form",
+    "Record is submitted",
+    "Manager reviews",
+    "Record becomes locked",
+    "Export is available"
+  ],
+  "applicationRecordSections": [
+    "Applicator",
+    "Field / Site",
+    "Product",
+    "Application Details",
+    "Weather / Conditions",
+    "Attestation",
+    "Manager Review",
+    "System Audit Metadata",
+    "Evidence Attachments later, not MVP"
+  ],
+  "formSections": {
+    "contractorInputs": {
+      "Applicator": [
+        {
+          "name": "Applicator Name",
+          "control": "Autocomplete",
+          "required": "true",
+          "notes": "Prefer known applicator selection; manual entry acceptable for MVP."
+        },
+        {
+          "name": "Company",
+          "control": "TextField or Autocomplete",
+          "required": "false",
+          "notes": "Autofill from applicator if known; editable in MVP."
+        },
+        {
+          "name": "Certification Number",
+          "control": "TextField",
+          "required": "required_if_rup_yes",
+          "notes": "Validate state format later."
+        }
+      ],
+      "Field / Site": [
+        {
+          "name": "Farm",
+          "control": "Autocomplete",
+          "required": "true",
+          "notes": "Filters fields."
+        },
+        {
+          "name": "Field",
+          "control": "Autocomplete",
+          "required": "true",
+          "notes": "Filtered by farm."
+        },
+        {
+          "name": "Crop or Site",
+          "control": "Autocomplete",
+          "required": "true",
+          "notes": "Allow non-crop site later."
+        },
+        {
+          "name": "Acres Treated",
+          "control": "Numeric TextField",
+          "required": "true",
+          "notes": "Decimal input."
+        }
+      ],
+      "Product": [
+        {
+          "name": "Product Name",
+          "control": "Autocomplete/search",
+          "required": "true",
+          "notes": "Local offline catalog; freeSolo only for product-not-found."
+        },
+        {
+          "name": "EPA Registration Number",
+          "control": "TextField",
+          "required": "required_unless_product_not_found",
+          "notes": "Autofill from product; editable if manual."
+        },
+        {
+          "name": "RUP Status",
+          "control": "Read-only Chip/Alert",
+          "required": "true",
+          "notes": "Values: yes/no/unknown. Do not use checkbox."
+        }
+      ],
+      "Application Details": [
+        {
+          "name": "Application Date",
+          "control": "DatePicker",
+          "required": "true",
+          "notes": "Default today."
+        },
+        {
+          "name": "Start Time",
+          "control": "TimePicker",
+          "required": "true",
+          "notes": ""
+        },
+        {
+          "name": "End Time",
+          "control": "TimePicker",
+          "required": "false_for_mvp",
+          "notes": ""
+        },
+        {
+          "name": "Application Method",
+          "control": "Select",
+          "required": "true",
+          "notes": "Ground sprayer, aerial, handheld/backpack, boom sprayer, spot treatment, irrigation/chemigation, other."
+        },
+        {
+          "name": "Rate Applied",
+          "control": "TextField for MVP",
+          "required": "true",
+          "notes": "Later split into amount/unit/basis."
+        },
+        {
+          "name": "Total Amount Applied",
+          "control": "TextField for MVP",
+          "required": "true",
+          "notes": "Later compute when units are structured."
+        }
+      ],
+      "Weather / Conditions": [
+        {
+          "name": "Temperature",
+          "control": "Numeric TextField",
+          "required": "true",
+          "notes": "Manual for MVP; auto-capture later."
+        },
+        {
+          "name": "Wind Speed",
+          "control": "Numeric TextField",
+          "required": "true",
+          "notes": ""
+        },
+        {
+          "name": "Wind Direction",
+          "control": "Select",
+          "required": "true",
+          "notes": "N, NE, E, SE, S, SW, W, NW, Variable, Calm, Unknown."
+        },
+        {
+          "name": "Weather Notes",
+          "control": "Multiline TextField",
+          "required": "false",
+          "notes": ""
+        }
+      ],
+      "Attestation": [
+        {
+          "name": "Submitted By",
+          "control": "Read-only text",
+          "required": "auto",
+          "notes": "From logged-in user."
+        },
+        {
+          "name": "Submitted At",
+          "control": "Read-only timestamp",
+          "required": "auto_on_submit",
+          "notes": ""
+        },
+        {
+          "name": "Attestation Confirmed",
+          "control": "Checkbox",
+          "required": "true",
+          "notes": "Explicit confirmation before submit."
+        }
+      ]
+    },
+    "managerInputs": [
+      {
+        "name": "Review Status",
+        "control": "Select",
+        "required": "required_when_reviewed",
+        "notes": "Manager-only."
+      },
+      {
+        "name": "Reviewed By",
+        "control": "Read-only text",
+        "required": "auto",
+        "notes": "Logged-in manager."
+      },
+      {
+        "name": "Reviewed At",
+        "control": "Read-only timestamp",
+        "required": "auto",
+        "notes": "Set on review action."
+      },
+      {
+        "name": "Review Notes",
+        "control": "Multiline TextField",
+        "required": "optional_or_required_if_rejected",
+        "notes": ""
+      }
+    ],
+    "systemCapturedFields": [
+      "Created At",
+      "Created Offline",
+      "Last Updated At",
+      "Locked At",
+      "Catalog Version"
+    ]
+  },
+  "statuses": {
+    "workflowStatus": [
+      "Draft",
+      "Submitted",
+      "Pending Review",
+      "Needs Correction",
+      "Accepted",
+      "Locked",
+      "Exported"
+    ],
+    "syncStatus": [
+      "Local Only",
+      "Queued",
+      "Syncing",
+      "Synced",
+      "Sync Failed"
+    ]
+  },
+  "domainModel": {
+    "peopleAccess": [
+      "User",
+      "Role",
+      "Applicator Profile",
+      "Manager Role",
+      "Contractor Company",
+      "Organization"
+    ],
+    "places": [
+      "Farm",
+      "Field / Site",
+      "Treated Area"
+    ],
+    "productsReferenceData": [
+      "Product Catalog",
+      "Product",
+      "EPA Registration Number",
+      "Product Snapshot",
+      "Catalog Version"
+    ],
+    "records": [
+      "Application Record",
+      "Review",
+      "Correction",
+      "Export"
+    ],
+    "events": [
+      "Created",
+      "Updated",
+      "Submitted",
+      "Synced",
+      "Accepted",
+      "Correction Requested",
+      "Locked",
+      "Exported"
+    ]
+  },
+  "relationships": [
+    "Organization has many Farms",
+    "Farm has many Fields/Sites",
+    "Field/Site has many Application Records",
+    "Organization has many Contractor Companies",
+    "Contractor Company has many Applicators",
+    "Applicator submits many Application Records",
+    "Product Catalog has many Products",
+    "Product belongs to a Catalog Version",
+    "Application Record references a Product",
+    "Application Record contains a Product Snapshot",
+    "Application Record has many Events",
+    "Application Record may have one Manager Review",
+    "Application Record may have many Corrections",
+    "Application Record may be included in Exports"
+  ],
+  "databaseTablesV01": [
+    "organizations",
+    "users",
+    "contractor_companies",
+    "applicators",
+    "farms",
+    "fields",
+    "product_catalog_versions",
+    "products",
+    "application_records",
+    "application_product_snapshots",
+    "application_reviews",
+    "application_record_events"
+  ],
+  "parkingLot": [
+    "Failed sync",
+    "Bad product",
+    "Stale catalog",
+    "Legal nuances",
+    "Contractor dispute",
+    "Correction workflow"
+  ],
+  "nextTask": "Design Database Tables v0.1 with table names, primary keys, foreign keys, and essential columns only."
+}

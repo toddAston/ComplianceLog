@@ -47,3 +47,6 @@ coverage/
 # Local development files
 debug-logs/
 temp/
+
+# Large data files (commit via Git LFS or keep local-only)
+data/raw/epa/apprildatadump_public.xlsx
