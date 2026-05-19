@@ -151,7 +151,7 @@ describe("App + DraftApplicationRecordForm integration", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: /Drafts \(0\)/ })
+      await screen.findByRole("heading", { level: 2, name: /Records \(0\)/ })
     ).toBeTruthy();
 
     await fillValidDraft();
@@ -159,7 +159,7 @@ describe("App + DraftApplicationRecordForm integration", () => {
     fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: /Drafts \(1\)/ })
+      await screen.findByRole("heading", { level: 2, name: /Records \(1\)/ })
     ).toBeTruthy();
     expect(await screen.findByText("draft")).toBeTruthy();
     expect(await screen.findByText("local_only")).toBeTruthy();
@@ -170,14 +170,14 @@ describe("App + DraftApplicationRecordForm integration", () => {
 
     await fillValidDraft();
     fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
-    await screen.findByRole("heading", { level: 2, name: /Drafts \(1\)/ });
+    await screen.findByRole("heading", { level: 2, name: /Records \(1\)/ });
 
     first.unmount();
 
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: /Drafts \(1\)/ })
+      await screen.findByRole("heading", { level: 2, name: /Records \(1\)/ })
     ).toBeTruthy();
     expect(await screen.findByText("draft")).toBeTruthy();
     expect(await screen.findByText("local_only")).toBeTruthy();

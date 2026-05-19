@@ -7,6 +7,7 @@ import {
   useAllProducts,
 } from "./db/queries";
 import { DraftApplicationRecordForm } from "./ui/application-record/DraftApplicationRecordForm";
+import { DraftsList } from "./ui/application-record/DraftsList";
 
 function App() {
   const organizations = useAllOrganizations();
@@ -20,9 +21,8 @@ function App() {
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "1.5rem", maxWidth: 720, margin: "0 auto" }}>
       <h1>FieldLog</h1>
       <p style={{ color: "#555" }}>
-        Offline-first pesticide application recordkeeping. This screen captures
-        a contractor draft locally; submission and manager review are not yet
-        wired in.
+        Offline-first pesticide application recordkeeping. Contractor draft
+        capture and submit are wired; manager review and lock are not yet.
       </p>
 
       <section style={{ marginTop: "1.5rem" }}>
@@ -31,24 +31,8 @@ function App() {
       </section>
 
       <section style={{ marginTop: "2rem" }}>
-        <h2>Drafts ({applicationRecords.length})</h2>
-        {applicationRecords.length === 0 ? (
-          <p style={{ color: "#888" }}>No drafts yet.</p>
-        ) : (
-          <ul>
-            {applicationRecords.map((r) => (
-              <li key={r.id}>
-                <code style={{ color: "#888" }}>{r.id.slice(0, 8)}</code>
-                {" — "}
-                {r.contractorInputs.fieldName} /{" "}
-                {r.contractorInputs.productName} —{" "}
-                <span>{r.workflowStatus}</span>
-                {" / "}
-                <span>{r.syncStatus}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <h2>Records ({applicationRecords.length})</h2>
+        <DraftsList />
       </section>
 
       <section style={{ marginTop: "2rem", borderTop: "1px solid #eee", paddingTop: "1rem" }}>
