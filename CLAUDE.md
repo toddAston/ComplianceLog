@@ -68,4 +68,4 @@ Once vitest is wired up:
 # Git / Repo Conventions
 - Default branch is `main`. Remote is `origin` → `https://github.com/toddAston/ComplianceLog`.
 - The 98 MB EPA xlsx (`data/raw/epa/apprildatadump_public.xlsx`) is gitignored intentionally; if a similar large file appears, gitignore it rather than committing.
-- `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` are gitignored per project preference.
+- `package-lock.json` is tracked for reproducible npm installs. `yarn.lock` and `pnpm-lock.yaml` remain gitignored unless the package manager changes.

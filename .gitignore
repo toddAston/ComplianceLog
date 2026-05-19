@@ -73,8 +73,8 @@ web_modules/
 .env.*.local
 !.env.example
 
-# Lock files (project preference)
-package-lock.json
+# Lock files: track npm's package-lock.json for reproducible installs.
+# Ignore lockfiles from package managers we do not use.
 yarn.lock
 pnpm-lock.yaml
 
@@ -156,6 +156,7 @@ vite.config.ts.timestamp-*
 # IDE & Editor
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
