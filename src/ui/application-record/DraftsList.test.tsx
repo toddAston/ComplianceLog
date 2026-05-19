@@ -10,7 +10,9 @@ import {
 import { db } from "../../db/fieldlogDb";
 import { seedDemoData, DEMO_ORG_ID } from "../../db/seed";
 import {
+  acceptAndLockApplicationRecord,
   createDraftApplicationRecord,
+  submitApplicationRecord,
   type ActorContext,
 } from "../../application/applicationRecordService";
 import type { ContractorInputs } from "../../domain/types";
@@ -19,6 +21,11 @@ import { DraftsList } from "./DraftsList";
 const TEST_APPLICATOR: ActorContext = {
   userId: "user-test-applicator",
   displayName: "Test Applicator",
+};
+
+const TEST_MANAGER: ActorContext = {
+  userId: "user-test-manager",
+  displayName: "Test Manager",
 };
 
 const buildContractorInputs = (
@@ -74,6 +81,16 @@ async function seedUnattestedDraft() {
     },
     TEST_APPLICATOR
   );
+}
+
+async function seedPendingReviewRecord() {
+  const draft = await seedAttestedDraft();
+  return submitApplicationRecord(draft.id, TEST_APPLICATOR);
+}
+
+async function seedLockedRecord() {
+  const submitted = await seedPendingReviewRecord();
+  return acceptAndLockApplicationRecord(submitted.id, TEST_MANAGER);
 }
 
 beforeEach(async () => {
@@ -197,5 +214,132 @@ describe("DraftsList submit affordance", () => {
     expect(screen.getByTestId(`workflow-${draftB.id}`).textContent).toBe(
       "draft"
     );
+  });
+});
+
+describe("DraftsList lock affordance", () => {
+  it("shows a Lock button only on pending_review rows (not draft, not locked)", async () => {
+    const draft = await seedAttestedDraft();
+    const pending = await seedPendingReviewRecord();
+    const locked = await seedLockedRecord();
+
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${draft.id}`);
+    await screen.findByTestId(`workflow-${pending.id}`);
+    await screen.findByTestId(`workflow-${locked.id}`);
+
+    const lockButtons = screen.getAllByRole("button", { name: /^lock$/i });
+    expect(lockButtons).toHaveLength(1);
+
+    const draftRow = screen.getByTestId(`workflow-${draft.id}`).closest("li")!;
+    expect(within(draftRow).queryByRole("button", { name: /^lock$/i })).toBeNull();
+
+    const lockedRow = screen
+      .getByTestId(`workflow-${locked.id}`)
+      .closest("li")!;
+    expect(within(lockedRow).queryByRole("button", { name: /^lock$/i })).toBeNull();
+    expect(within(lockedRow).queryByRole("button", { name: /submit/i })).toBeNull();
+
+    const pendingRow = screen
+      .getByTestId(`workflow-${pending.id}`)
+      .closest("li")!;
+    expect(
+      within(pendingRow).getByRole("button", { name: /^lock$/i })
+    ).toBeTruthy();
+  });
+
+  it("transitions pending_review to locked and persists managerInputs with the UI-layer manager actor", async () => {
+    const pending = await seedPendingReviewRecord();
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${pending.id}`);
+    expect(screen.getByTestId(`workflow-${pending.id}`).textContent).toBe(
+      "pending_review"
+    );
+
+    const notesInput = screen.getByLabelText(/review notes/i);
+    fireEvent.change(notesInput, { target: { value: "Looks good." } });
+
+    fireEvent.click(screen.getByRole("button", { name: /^lock$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`workflow-${pending.id}`).textContent).toBe(
+        "locked"
+      );
+    });
+
+    const updated = await db.applicationRecords.get(pending.id);
+    expect(updated?.workflowStatus).toBe("locked");
+    expect(updated?.managerInputs.reviewedBy).toBe("Demo Manager");
+    expect(updated?.managerInputs.reviewedAt).toBeDefined();
+    expect(updated?.managerInputs.reviewNotes).toBe("Looks good.");
+    expect(updated?.system.lockedAt).toBeDefined();
+
+    expect(screen.queryByRole("button", { name: /^lock$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /submit/i })).toBeNull();
+  });
+
+  it("records reviewed and locked events with the UI-layer demo manager (no seed coupling)", async () => {
+    const pending = await seedPendingReviewRecord();
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${pending.id}`);
+    fireEvent.click(screen.getByRole("button", { name: /^lock$/i }));
+
+    await waitFor(async () => {
+      const updated = await db.applicationRecords.get(pending.id);
+      expect(updated?.workflowStatus).toBe("locked");
+    });
+
+    const events = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(pending.id)
+      .toArray();
+    const reviewed = events.find((e) => e.type === "reviewed");
+    const locked = events.find((e) => e.type === "locked");
+
+    expect(reviewed).toBeDefined();
+    expect(reviewed!.actorUserId).toBe("user-demo-manager");
+    expect(reviewed!.actorDisplayName).toBe("Demo Manager");
+
+    expect(locked).toBeDefined();
+    expect(locked!.actorUserId).toBe("user-demo-manager");
+    expect(locked!.actorDisplayName).toBe("Demo Manager");
+  });
+
+  it("leaves contractorInputs unchanged after lock", async () => {
+    const pending = await seedPendingReviewRecord();
+    const before = (await db.applicationRecords.get(pending.id))!
+      .contractorInputs;
+
+    render(<DraftsList />);
+    await screen.findByTestId(`workflow-${pending.id}`);
+    fireEvent.click(screen.getByRole("button", { name: /^lock$/i }));
+
+    await waitFor(async () => {
+      const updated = await db.applicationRecords.get(pending.id);
+      expect(updated?.workflowStatus).toBe("locked");
+    });
+
+    const after = (await db.applicationRecords.get(pending.id))!
+      .contractorInputs;
+    expect(after).toEqual(before);
+  });
+
+  it("omits reviewNotes when input is left blank", async () => {
+    const pending = await seedPendingReviewRecord();
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${pending.id}`);
+    fireEvent.click(screen.getByRole("button", { name: /^lock$/i }));
+
+    await waitFor(async () => {
+      const updated = await db.applicationRecords.get(pending.id);
+      expect(updated?.workflowStatus).toBe("locked");
+    });
+
+    const updated = await db.applicationRecords.get(pending.id);
+    expect(updated?.managerInputs.reviewNotes).toBeUndefined();
   });
 });

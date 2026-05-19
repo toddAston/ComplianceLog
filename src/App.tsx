@@ -22,7 +22,7 @@ function App() {
       <h1>FieldLog</h1>
       <p style={{ color: "#555" }}>
         Offline-first pesticide application recordkeeping. Contractor draft
-        capture and submit are wired; manager review and lock are not yet.
+        capture, submit, and manager review/lock are wired.
       </p>
 
       <section style={{ marginTop: "1.5rem" }}>
