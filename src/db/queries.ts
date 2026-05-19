@@ -2,6 +2,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./fieldlogDb";
 import type {
   ApplicationRecord,
+  ApplicationRecordEvent,
   Applicator,
   Farm,
   FieldSite,
@@ -29,4 +30,17 @@ export const useAllApplicationRecords = () =>
     () => db.applicationRecords.orderBy("system.createdAt").reverse().toArray(),
     [],
     [] as ApplicationRecord[]
+  );
+
+export const useRecordEvents = (recordId: string | null) =>
+  useLiveQuery(
+    () =>
+      recordId
+        ? db.recordEvents
+            .where("applicationRecordId")
+            .equals(recordId)
+            .sortBy("occurredAt")
+        : [],
+    [recordId],
+    [] as ApplicationRecordEvent[]
   );

@@ -186,3 +186,4 @@ data/raw/epa/apprildatadump_public.xlsx
 
 # External vendor documentation/source clones (cloned via scripts/clone-reference-docs.cmd)
 reference/vendor-docs/
+.npmrc

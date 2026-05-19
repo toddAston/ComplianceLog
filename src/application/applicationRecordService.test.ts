@@ -4,6 +4,7 @@ import {
   acceptAndLockApplicationRecord,
   createDraftApplicationRecord,
   requestCorrectionForApplicationRecord,
+  resubmitCorrectedApplicationRecord,
   submitApplicationRecord,
   type ActorContext,
 } from "./applicationRecordService";
@@ -437,5 +438,190 @@ describe("requestCorrectionForApplicationRecord", () => {
     );
 
     expect(submittedEventsAfter).toEqual(submittedEventsBefore);
+  });
+});
+
+describe("submitApplicationRecord — compliance integration", () => {
+  it("blocks submit when RUP product used by uncertified applicator", async () => {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs({
+          rupStatus: "yes",
+          certificationNumber: "",
+        }),
+      },
+      TEST_APPLICATOR
+    );
+
+    await expect(
+      submitApplicationRecord(draft.id, TEST_APPLICATOR)
+    ).rejects.toThrow(/restricted-use product/i);
+
+    const record = await db.applicationRecords.get(draft.id);
+    expect(record!.workflowStatus).toBe("draft");
+  });
+
+  it("allows submit with warnings and stores compliance_check_run event", async () => {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs({
+          windDirection: "",
+        }),
+      },
+      TEST_APPLICATOR
+    );
+
+    const submitted = await submitApplicationRecord(draft.id, TEST_APPLICATOR);
+    expect(submitted.workflowStatus).toBe("pending_review");
+
+    const events = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(draft.id)
+      .toArray();
+
+    const checkEvent = events.find((e) => e.type === "compliance_check_run");
+    expect(checkEvent).toBeDefined();
+    expect((checkEvent!.metadata as any).results.length).toBeGreaterThan(0);
+  });
+});
+
+describe("resubmitCorrectedApplicationRecord", () => {
+  async function createNeedsCorrectionRecord() {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs({ windDirection: "" }),
+      },
+      TEST_APPLICATOR
+    );
+    await submitApplicationRecord(draft.id, TEST_APPLICATOR);
+    await requestCorrectionForApplicationRecord(
+      draft.id,
+      TEST_MANAGER,
+      "Please add wind direction."
+    );
+    return draft.id;
+  }
+
+  it("rejects non-needs_correction records", async () => {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs(),
+      },
+      TEST_APPLICATOR
+    );
+
+    await expect(
+      resubmitCorrectedApplicationRecord(
+        draft.id,
+        { windDirection: "S" },
+        TEST_APPLICATOR
+      )
+    ).rejects.toThrow(/only records needing correction/i);
+  });
+
+  it("rejects empty updated fields", async () => {
+    const recordId = await createNeedsCorrectionRecord();
+
+    await expect(
+      resubmitCorrectedApplicationRecord(recordId, {}, TEST_APPLICATOR)
+    ).rejects.toThrow(/at least one field/i);
+  });
+
+  it("transitions needs_correction to pending_review", async () => {
+    const recordId = await createNeedsCorrectionRecord();
+
+    const updated = await resubmitCorrectedApplicationRecord(
+      recordId,
+      { windDirection: "SSW" },
+      TEST_APPLICATOR
+    );
+
+    expect(updated.workflowStatus).toBe("pending_review");
+    expect(updated.contractorInputs.windDirection).toBe("SSW");
+  });
+
+  it("resets manager inputs", async () => {
+    const recordId = await createNeedsCorrectionRecord();
+
+    const updated = await resubmitCorrectedApplicationRecord(
+      recordId,
+      { windDirection: "SSW" },
+      TEST_APPLICATOR
+    );
+
+    expect(updated.managerInputs.reviewStatus).toBe("not_reviewed");
+    expect(updated.managerInputs.reviewedBy).toBeUndefined();
+  });
+
+  it("appends correction_submitted event with diff", async () => {
+    const recordId = await createNeedsCorrectionRecord();
+
+    await resubmitCorrectedApplicationRecord(
+      recordId,
+      { windDirection: "SSW" },
+      TEST_APPLICATOR
+    );
+
+    const events = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(recordId)
+      .toArray();
+
+    const corrEvt = events.find((e) => e.type === "correction_submitted");
+    expect(corrEvt).toBeDefined();
+    expect((corrEvt!.metadata as any).updatedFields).toEqual({
+      windDirection: "SSW",
+    });
+  });
+
+  it("appends compliance_check_run event on resubmit", async () => {
+    const recordId = await createNeedsCorrectionRecord();
+
+    await resubmitCorrectedApplicationRecord(
+      recordId,
+      { windDirection: "SSW" },
+      TEST_APPLICATOR
+    );
+
+    const events = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(recordId)
+      .toArray();
+
+    const checkEvents = events.filter(
+      (e) => e.type === "compliance_check_run"
+    );
+    expect(checkEvents.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("blocks resubmit when blocked rules fire", async () => {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs({
+          rupStatus: "no",
+          certificationNumber: "",
+        }),
+      },
+      TEST_APPLICATOR
+    );
+    await submitApplicationRecord(draft.id, TEST_APPLICATOR);
+    await requestCorrectionForApplicationRecord(
+      draft.id,
+      TEST_MANAGER,
+      "Fix something"
+    );
+
+    await expect(
+      resubmitCorrectedApplicationRecord(
+        draft.id,
+        { rupStatus: "yes" },
+        TEST_APPLICATOR
+      )
+    ).rejects.toThrow(/restricted-use product/i);
   });
 });

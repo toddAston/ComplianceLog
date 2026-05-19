@@ -3,9 +3,11 @@ import type {
   ApplicationRecord,
   ApplicationRecordEvent,
   ApplicationReview,
+  ContractorInputs,
   Product,
   ProductSnapshot,
 } from "../domain/types";
+import { runComplianceChecks } from "./complianceRules";
 
 export type ActorContext = {
   userId: string;
@@ -88,6 +90,12 @@ export async function submitApplicationRecord(
     throw new Error("Attestation must be confirmed before submission.");
   }
 
+  const complianceResults = runComplianceChecks(record);
+  const blocked = complianceResults.filter((r) => r.severity === "blocked");
+  if (blocked.length > 0) {
+    throw new Error(blocked[0].message);
+  }
+
   const submittedAt = now();
 
   const productSnapshot: ProductSnapshot = {
@@ -124,6 +132,16 @@ export async function submitApplicationRecord(
   };
 
   const events: ApplicationRecordEvent[] = [
+    {
+      id: id(),
+      applicationRecordId: record.id,
+      type: "compliance_check_run",
+      actorUserId: actor.userId,
+      actorDisplayName: actor.displayName,
+      occurredAt: submittedAt,
+      message: `Compliance checks run at submit: ${complianceResults.length} issue(s) found.`,
+      metadata: { results: complianceResults },
+    },
     {
       id: id(),
       applicationRecordId: record.id,
@@ -309,6 +327,100 @@ export async function requestCorrectionForApplicationRecord(
     async () => {
       await db.applicationRecords.put(updatedRecord);
       await db.recordEvents.add(event);
+    }
+  );
+
+  return updatedRecord;
+}
+
+export async function resubmitCorrectedApplicationRecord(
+  recordId: string,
+  updatedFields: Partial<ContractorInputs>,
+  actor: ActorContext
+) {
+  const record = await db.applicationRecords.get(recordId);
+
+  if (!record) {
+    throw new Error("Application record not found.");
+  }
+
+  if (record.workflowStatus !== "needs_correction") {
+    throw new Error(
+      "Only records needing correction can be resubmitted."
+    );
+  }
+
+  const nonEmptyFields = Object.fromEntries(
+    Object.entries(updatedFields).filter(
+      ([, v]) => v !== undefined && v !== ""
+    )
+  );
+  if (Object.keys(nonEmptyFields).length === 0) {
+    throw new Error("At least one field must be updated for resubmission.");
+  }
+
+  const mergedInputs: ContractorInputs = {
+    ...record.contractorInputs,
+    ...nonEmptyFields,
+  };
+
+  const candidateRecord: ApplicationRecord = {
+    ...record,
+    contractorInputs: mergedInputs,
+  };
+
+  const complianceResults = runComplianceChecks(candidateRecord);
+  const blocked = complianceResults.filter((r) => r.severity === "blocked");
+  if (blocked.length > 0) {
+    throw new Error(blocked[0].message);
+  }
+
+  const resubmittedAt = now();
+
+  const updatedRecord: ApplicationRecord = {
+    ...record,
+    workflowStatus: "pending_review",
+    syncStatus: "queued",
+    contractorInputs: mergedInputs,
+    managerInputs: {
+      reviewStatus: "not_reviewed",
+    },
+    system: {
+      ...record.system,
+      lastUpdatedAt: resubmittedAt,
+    },
+  };
+
+  const events: ApplicationRecordEvent[] = [
+    {
+      id: id(),
+      applicationRecordId: record.id,
+      type: "correction_submitted",
+      actorUserId: actor.userId,
+      actorDisplayName: actor.displayName,
+      occurredAt: resubmittedAt,
+      message: "Contractor resubmitted corrected application record.",
+      metadata: { updatedFields: nonEmptyFields },
+    },
+    {
+      id: id(),
+      applicationRecordId: record.id,
+      type: "compliance_check_run",
+      actorUserId: actor.userId,
+      actorDisplayName: actor.displayName,
+      occurredAt: resubmittedAt,
+      message: `Compliance checks run at resubmit: ${complianceResults.length} issue(s) found.`,
+      metadata: { results: complianceResults },
+    },
+  ];
+
+  await db.transaction(
+    "rw",
+    db.applicationRecords,
+    db.recordEvents,
+    async () => {
+      await db.applicationRecords.put(updatedRecord);
+      await db.recordEvents.bulkAdd(events);
     }
   );
 

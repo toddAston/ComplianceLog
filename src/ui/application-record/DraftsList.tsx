@@ -9,7 +9,9 @@ import {
   exportLockedApplicationRecord,
   type LockedApplicationRecordExport,
 } from "../../application/applicationRecordExport";
+import { runComplianceChecks } from "../../application/complianceRules";
 import { DEMO_APPLICATOR_ACTOR, DEMO_MANAGER_ACTOR } from "../demoSession";
+import { RecordDetailDialog } from "./RecordDetailDialog";
 
 type RowState =
   | { kind: "idle" }
@@ -27,6 +29,7 @@ export function DraftsList() {
   const [correctionNotes, setCorrectionNotes] = useState<
     Record<string, string>
   >({});
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
 
   const clearRowState = (recordId: string) => {
     setRowState((prev) => {
@@ -121,19 +124,29 @@ export function DraftsList() {
     return <p style={{ color: "#888" }}>No records yet.</p>;
   }
 
+  const selectedRecord = selectedRecordId
+    ? records.find((r) => r.id === selectedRecordId) ?? null
+    : null;
+
   return (
+    <>
     <ul style={{ listStyle: "none", paddingLeft: 0 }}>
       {records.map((r) => {
         const state = rowState[r.id] ?? { kind: "idle" };
         const isDraft = r.workflowStatus === "draft";
         const isPendingReview = r.workflowStatus === "pending_review";
         const isLocked = r.workflowStatus === "locked";
+        const isNeedsCorrection = r.workflowStatus === "needs_correction";
         const attestationConfirmed = r.contractorInputs.attestationConfirmed;
         const canSubmit = isDraft && attestationConfirmed;
         const notesValue = reviewNotes[r.id] ?? "";
         const correctionNotesValue = correctionNotes[r.id] ?? "";
         const canRequestCorrection =
           isPendingReview && correctionNotesValue.trim().length > 0;
+        const complianceResults = runComplianceChecks(r);
+        const warningCount = complianceResults.filter(
+          (c) => c.severity === "warning" || c.severity === "error"
+        ).length;
 
         return (
           <li
@@ -152,6 +165,31 @@ export function DraftsList() {
               <span data-testid={`workflow-${r.id}`}>{r.workflowStatus}</span>
               {" / "}
               <span data-testid={`sync-${r.id}`}>{r.syncStatus}</span>
+              {warningCount > 0 && (
+                <span
+                  style={{
+                    marginLeft: "0.5rem",
+                    color: "#e65100",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                  }}
+                  title={`${warningCount} compliance issue(s)`}
+                >
+                  ⚠ {warningCount}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedRecordId(r.id)}
+                style={{
+                  marginLeft: "0.5rem",
+                  padding: "0.1rem 0.4rem",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                }}
+              >
+                Details
+              </button>
             </div>
 
             {isDraft && (
@@ -370,9 +408,20 @@ export function DraftsList() {
                 )}
               </div>
             )}
+
+            {isNeedsCorrection && (
+              <div style={{ marginTop: "0.4rem", fontSize: "0.85rem", color: "#e65100" }}>
+                Needs correction — click Details to resubmit.
+              </div>
+            )}
           </li>
         );
       })}
     </ul>
+    <RecordDetailDialog
+      record={selectedRecord}
+      onClose={() => setSelectedRecordId(null)}
+    />
+    </>
   );
 }

@@ -37,9 +37,9 @@ const draftFormSchema = z.object({
   targetPest: optionalString,
   phi: optionalString,
 
-  temperature: z.string().min(1, "Temperature is required"),
-  windSpeed: z.string().min(1, "Wind speed is required"),
-  windDirection: z.string().min(1, "Wind direction is required"),
+  temperature: optionalString,
+  windSpeed: optionalString,
+  windDirection: optionalString,
   weatherNotes: optionalString,
 
   attestationConfirmed: z.boolean(),
@@ -164,9 +164,9 @@ export function DraftApplicationRecordForm() {
       targetPest: values.targetPest || undefined,
       phi: values.phi || undefined,
 
-      temperature: values.temperature,
-      windSpeed: values.windSpeed,
-      windDirection: values.windDirection,
+      temperature: values.temperature || "",
+      windSpeed: values.windSpeed || "",
+      windDirection: values.windDirection || "",
       weatherNotes: values.weatherNotes || undefined,
 
       attestationConfirmed: values.attestationConfirmed,
