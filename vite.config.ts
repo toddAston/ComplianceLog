@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -9,5 +10,13 @@ export default defineConfig({
   // index.html files and test-fixture packages that fail to resolve here).
   optimizeDeps: {
     entries: ['index.html'],
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    // Restrict discovery to our app. Without this, Vitest's default include
+    // glob walks into reference/vendor-docs/ and tries to run thousands of
+    // test files from cloned upstream repos (MUI, Vitest, Zod, Vite, etc.).
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
 })
