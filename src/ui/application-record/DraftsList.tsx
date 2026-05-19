@@ -3,18 +3,8 @@ import { useAllApplicationRecords } from "../../db/queries";
 import {
   acceptAndLockApplicationRecord,
   submitApplicationRecord,
-  type ActorContext,
 } from "../../application/applicationRecordService";
-
-const DEMO_APPLICATOR: ActorContext = {
-  userId: "user-demo-applicator",
-  displayName: "Demo Applicator",
-};
-
-const DEMO_MANAGER: ActorContext = {
-  userId: "user-demo-manager",
-  displayName: "Demo Manager",
-};
+import { DEMO_APPLICATOR_ACTOR, DEMO_MANAGER_ACTOR } from "../demoSession";
 
 type RowState =
   | { kind: "idle" }
@@ -48,7 +38,7 @@ export function DraftsList() {
   const onSubmit = async (recordId: string) => {
     setRowState((prev) => ({ ...prev, [recordId]: { kind: "submitting" } }));
     try {
-      await submitApplicationRecord(recordId, DEMO_APPLICATOR);
+      await submitApplicationRecord(recordId, DEMO_APPLICATOR_ACTOR);
       clearRowState(recordId);
     } catch (err) {
       setRowError(recordId, err);
@@ -61,7 +51,7 @@ export function DraftsList() {
     try {
       await acceptAndLockApplicationRecord(
         recordId,
-        DEMO_MANAGER,
+        DEMO_MANAGER_ACTOR,
         notes ? notes : undefined
       );
       clearRowState(recordId);

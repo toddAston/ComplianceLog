@@ -9,16 +9,9 @@ import {
   useAllOrganizations,
   useAllProducts,
 } from "../../db/queries";
-import {
-  createDraftApplicationRecord,
-  type ActorContext,
-} from "../../application/applicationRecordService";
+import { createDraftApplicationRecord } from "../../application/applicationRecordService";
 import type { ContractorInputs } from "../../domain/types";
-
-const DEMO_ACTOR: ActorContext = {
-  userId: "user-demo-applicator",
-  displayName: "Demo Applicator",
-};
+import { DEMO_APPLICATOR_ACTOR } from "../demoSession";
 
 const optionalString = z
   .string()
@@ -185,7 +178,7 @@ export function DraftApplicationRecordForm() {
           organizationId: values.organizationId,
           contractorInputs,
         },
-        DEMO_ACTOR
+        DEMO_APPLICATOR_ACTOR
       );
       setSubmitState({ kind: "saved", recordId: draft.id });
       reset();
