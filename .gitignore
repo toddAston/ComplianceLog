@@ -168,6 +168,7 @@ Thumbs.db
 
 # Build Output
 build/
+!docs/build/
 *.tsbuildinfo
 
 # Project-Specific
