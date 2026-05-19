@@ -4,12 +4,18 @@ import {
   acceptAndLockApplicationRecord,
   submitApplicationRecord,
 } from "../../application/applicationRecordService";
+import {
+  exportLockedApplicationRecord,
+  type LockedApplicationRecordExport,
+} from "../../application/applicationRecordExport";
 import { DEMO_APPLICATOR_ACTOR, DEMO_MANAGER_ACTOR } from "../demoSession";
 
 type RowState =
   | { kind: "idle" }
   | { kind: "submitting" }
   | { kind: "locking" }
+  | { kind: "exporting" }
+  | { kind: "exported"; dto: LockedApplicationRecordExport }
   | { kind: "error"; message: string };
 
 export function DraftsList() {
@@ -45,6 +51,23 @@ export function DraftsList() {
     }
   };
 
+  const onViewExport = async (recordId: string) => {
+    setRowState((prev) => ({ ...prev, [recordId]: { kind: "exporting" } }));
+    try {
+      const dto = await exportLockedApplicationRecord(recordId);
+      setRowState((prev) => ({
+        ...prev,
+        [recordId]: { kind: "exported", dto },
+      }));
+    } catch (err) {
+      setRowError(recordId, err);
+    }
+  };
+
+  const onCloseExport = (recordId: string) => {
+    clearRowState(recordId);
+  };
+
   const onLock = async (recordId: string) => {
     setRowState((prev) => ({ ...prev, [recordId]: { kind: "locking" } }));
     const notes = reviewNotes[recordId]?.trim();
@@ -75,6 +98,7 @@ export function DraftsList() {
         const state = rowState[r.id] ?? { kind: "idle" };
         const isDraft = r.workflowStatus === "draft";
         const isPendingReview = r.workflowStatus === "pending_review";
+        const isLocked = r.workflowStatus === "locked";
         const attestationConfirmed = r.contractorInputs.attestationConfirmed;
         const canSubmit = isDraft && attestationConfirmed;
         const notesValue = reviewNotes[r.id] ?? "";
@@ -125,6 +149,80 @@ export function DraftsList() {
                   >
                     Attestation required to submit.
                   </span>
+                )}
+                {state.kind === "error" && (
+                  <span
+                    style={{
+                      marginLeft: "0.5rem",
+                      fontSize: "0.8rem",
+                      color: "#b00020",
+                    }}
+                  >
+                    {state.message}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {isLocked && (
+              <div style={{ marginTop: "0.4rem" }}>
+                {state.kind !== "exported" && (
+                  <button
+                    type="button"
+                    onClick={() => onViewExport(r.id)}
+                    disabled={state.kind === "exporting"}
+                    style={{
+                      padding: "0.3rem 0.7rem",
+                      fontSize: "0.9rem",
+                      cursor:
+                        state.kind === "exporting" ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {state.kind === "exporting"
+                      ? "Loading…"
+                      : "View export"}
+                  </button>
+                )}
+                {state.kind === "exported" && (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        marginBottom: "0.4rem",
+                      }}
+                    >
+                      <span style={{ fontSize: "0.85rem", color: "#555" }}>
+                        Evidence export (audit packet — not a legal authorization
+                        certificate)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onCloseExport(r.id)}
+                        style={{
+                          padding: "0.2rem 0.5rem",
+                          fontSize: "0.8rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <pre
+                      data-testid={`export-${r.id}`}
+                      style={{
+                        fontSize: "0.75rem",
+                        background: "#f7f7f7",
+                        border: "1px solid #eee",
+                        padding: "0.5rem",
+                        overflowX: "auto",
+                        maxHeight: "20rem",
+                      }}
+                    >
+                      {JSON.stringify(state.dto, null, 2)}
+                    </pre>
+                  </>
                 )}
                 {state.kind === "error" && (
                   <span

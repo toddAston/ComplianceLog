@@ -88,9 +88,13 @@ async function seedPendingReviewRecord() {
   return submitApplicationRecord(draft.id, TEST_APPLICATOR);
 }
 
-async function seedLockedRecord() {
+async function seedLockedRecord(reviewNotes?: string) {
   const submitted = await seedPendingReviewRecord();
-  return acceptAndLockApplicationRecord(submitted.id, TEST_MANAGER);
+  return acceptAndLockApplicationRecord(
+    submitted.id,
+    TEST_MANAGER,
+    reviewNotes
+  );
 }
 
 beforeEach(async () => {
@@ -341,5 +345,140 @@ describe("DraftsList lock affordance", () => {
 
     const updated = await db.applicationRecords.get(pending.id);
     expect(updated?.managerInputs.reviewNotes).toBeUndefined();
+  });
+});
+
+describe("DraftsList export affordance", () => {
+  it("shows View export only on locked rows (not draft, not pending_review)", async () => {
+    const draft = await seedAttestedDraft();
+    const pending = await seedPendingReviewRecord();
+    const locked = await seedLockedRecord();
+
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${draft.id}`);
+    await screen.findByTestId(`workflow-${pending.id}`);
+    await screen.findByTestId(`workflow-${locked.id}`);
+
+    const exportButtons = screen.getAllByRole("button", {
+      name: /view export/i,
+    });
+    expect(exportButtons).toHaveLength(1);
+
+    const draftRow = screen.getByTestId(`workflow-${draft.id}`).closest("li")!;
+    expect(
+      within(draftRow).queryByRole("button", { name: /view export/i })
+    ).toBeNull();
+
+    const pendingRow = screen
+      .getByTestId(`workflow-${pending.id}`)
+      .closest("li")!;
+    expect(
+      within(pendingRow).queryByRole("button", { name: /view export/i })
+    ).toBeNull();
+
+    const lockedRow = screen
+      .getByTestId(`workflow-${locked.id}`)
+      .closest("li")!;
+    expect(
+      within(lockedRow).getByRole("button", { name: /view export/i })
+    ).toBeTruthy();
+  });
+
+  it("renders deterministic JSON containing chain-of-custody fields on click", async () => {
+    const locked = await seedLockedRecord("Looks good.");
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${locked.id}`);
+    fireEvent.click(screen.getByRole("button", { name: /view export/i }));
+
+    const pre = await screen.findByTestId(`export-${locked.id}`);
+    const text = pre.textContent ?? "";
+
+    expect(text).toContain('"exportSchemaVersion": "v1"');
+    expect(text).toContain(`"recordId": "${locked.id}"`);
+    expect(text).toContain('"workflowStatus": "locked"');
+    expect(text).toContain('"productSnapshot"');
+    expect(text).toContain('"contractorInputs"');
+    expect(text).toContain('"managerReview"');
+    expect(text).toContain('"reviewedBy": "Test Manager"');
+    expect(text).toContain('"reviewNotes": "Looks good."');
+    expect(text).toContain('"lockedAt"');
+    expect(text).toContain('"type": "created"');
+    expect(text).toContain('"type": "submitted"');
+    expect(text).toContain('"type": "reviewed"');
+    expect(text).toContain('"type": "locked"');
+  });
+
+  it("does not mutate the source record, snapshot, or events", async () => {
+    const locked = await seedLockedRecord();
+
+    const recordBefore = await db.applicationRecords.get(locked.id);
+    const snapshotBefore = await db.productSnapshots.get(
+      locked.productSnapshotId!
+    );
+    const eventsBefore = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(locked.id)
+      .toArray();
+
+    render(<DraftsList />);
+    await screen.findByTestId(`workflow-${locked.id}`);
+    fireEvent.click(screen.getByRole("button", { name: /view export/i }));
+    await screen.findByTestId(`export-${locked.id}`);
+
+    expect(await db.applicationRecords.get(locked.id)).toEqual(recordBefore);
+    expect(await db.productSnapshots.get(locked.productSnapshotId!)).toEqual(
+      snapshotBefore
+    );
+    expect(
+      await db.recordEvents
+        .where("applicationRecordId")
+        .equals(locked.id)
+        .toArray()
+    ).toEqual(eventsBefore);
+  });
+
+  it("produces equivalent output across repeated view export actions", async () => {
+    const locked = await seedLockedRecord("Looks good.");
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${locked.id}`);
+
+    fireEvent.click(screen.getByRole("button", { name: /view export/i }));
+    const firstText =
+      (await screen.findByTestId(`export-${locked.id}`)).textContent ?? "";
+
+    fireEvent.click(screen.getByRole("button", { name: /close/i }));
+    expect(screen.queryByTestId(`export-${locked.id}`)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /view export/i }));
+    const secondText =
+      (await screen.findByTestId(`export-${locked.id}`)).textContent ?? "";
+
+    expect(secondText).toBe(firstText);
+  });
+
+  it("isolates export preview to the clicked row", async () => {
+    const lockedA = await seedLockedRecord();
+    const lockedB = await seedLockedRecord();
+
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${lockedA.id}`);
+    await screen.findByTestId(`workflow-${lockedB.id}`);
+
+    const rowA = screen.getByTestId(`workflow-${lockedA.id}`).closest("li")!;
+    fireEvent.click(
+      within(rowA).getByRole("button", { name: /view export/i })
+    );
+
+    await screen.findByTestId(`export-${lockedA.id}`);
+    expect(screen.queryByTestId(`export-${lockedB.id}`)).toBeNull();
+
+    const rowB = screen.getByTestId(`workflow-${lockedB.id}`).closest("li")!;
+    expect(
+      within(rowB).getByRole("button", { name: /view export/i })
+    ).toBeTruthy();
   });
 });
