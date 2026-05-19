@@ -35,6 +35,7 @@ export const recordEventTypeSchema = z.enum([
   "submitted",
   "product_snapshot_created",
   "reviewed",
+  "correction_requested",
   "accepted",
   "locked",
   "exported",

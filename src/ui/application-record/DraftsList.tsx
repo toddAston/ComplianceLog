@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAllApplicationRecords } from "../../db/queries";
 import {
   acceptAndLockApplicationRecord,
+  requestCorrectionForApplicationRecord,
   submitApplicationRecord,
 } from "../../application/applicationRecordService";
 import {
@@ -14,6 +15,7 @@ type RowState =
   | { kind: "idle" }
   | { kind: "submitting" }
   | { kind: "locking" }
+  | { kind: "requesting_correction" }
   | { kind: "exporting" }
   | { kind: "exported"; dto: LockedApplicationRecordExport }
   | { kind: "error"; message: string };
@@ -22,6 +24,9 @@ export function DraftsList() {
   const records = useAllApplicationRecords();
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [correctionNotes, setCorrectionNotes] = useState<
+    Record<string, string>
+  >({});
 
   const clearRowState = (recordId: string) => {
     setRowState((prev) => {
@@ -68,6 +73,30 @@ export function DraftsList() {
     clearRowState(recordId);
   };
 
+  const onRequestCorrection = async (recordId: string) => {
+    const notes = correctionNotes[recordId]?.trim();
+    if (!notes) return;
+    setRowState((prev) => ({
+      ...prev,
+      [recordId]: { kind: "requesting_correction" },
+    }));
+    try {
+      await requestCorrectionForApplicationRecord(
+        recordId,
+        DEMO_MANAGER_ACTOR,
+        notes
+      );
+      clearRowState(recordId);
+      setCorrectionNotes((prev) => {
+        const next = { ...prev };
+        delete next[recordId];
+        return next;
+      });
+    } catch (err) {
+      setRowError(recordId, err);
+    }
+  };
+
   const onLock = async (recordId: string) => {
     setRowState((prev) => ({ ...prev, [recordId]: { kind: "locking" } }));
     const notes = reviewNotes[recordId]?.trim();
@@ -102,6 +131,9 @@ export function DraftsList() {
         const attestationConfirmed = r.contractorInputs.attestationConfirmed;
         const canSubmit = isDraft && attestationConfirmed;
         const notesValue = reviewNotes[r.id] ?? "";
+        const correctionNotesValue = correctionNotes[r.id] ?? "";
+        const canRequestCorrection =
+          isPendingReview && correctionNotesValue.trim().length > 0;
 
         return (
           <li
@@ -277,6 +309,54 @@ export function DraftsList() {
                 >
                   {state.kind === "locking" ? "Locking…" : "Lock"}
                 </button>
+                <div style={{ marginTop: "0.4rem" }}>
+                  <label
+                    htmlFor={`correction-notes-${r.id}`}
+                    style={{ fontSize: "0.85rem", marginRight: "0.4rem" }}
+                  >
+                    Correction notes
+                  </label>
+                  <input
+                    id={`correction-notes-${r.id}`}
+                    type="text"
+                    value={correctionNotesValue}
+                    onChange={(e) =>
+                      setCorrectionNotes((prev) => ({
+                        ...prev,
+                        [r.id]: e.target.value,
+                      }))
+                    }
+                    disabled={state.kind === "requesting_correction"}
+                    placeholder="Required to request corrections"
+                    style={{
+                      fontSize: "0.85rem",
+                      padding: "0.2rem 0.4rem",
+                      marginRight: "0.5rem",
+                      minWidth: "12rem",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onRequestCorrection(r.id)}
+                    disabled={
+                      !canRequestCorrection ||
+                      state.kind === "requesting_correction"
+                    }
+                    style={{
+                      padding: "0.3rem 0.7rem",
+                      fontSize: "0.9rem",
+                      cursor:
+                        !canRequestCorrection ||
+                        state.kind === "requesting_correction"
+                          ? "not-allowed"
+                          : "pointer",
+                    }}
+                  >
+                    {state.kind === "requesting_correction"
+                      ? "Requesting…"
+                      : "Request correction"}
+                  </button>
+                </div>
                 {state.kind === "error" && (
                   <span
                     style={{

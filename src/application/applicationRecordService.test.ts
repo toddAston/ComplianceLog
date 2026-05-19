@@ -3,6 +3,7 @@ import { db } from "../db/fieldlogDb";
 import {
   acceptAndLockApplicationRecord,
   createDraftApplicationRecord,
+  requestCorrectionForApplicationRecord,
   submitApplicationRecord,
   type ActorContext,
 } from "./applicationRecordService";
@@ -245,5 +246,196 @@ describe("acceptAndLockApplicationRecord", () => {
 
     expect(eventTypes).toContain("reviewed");
     expect(eventTypes).toContain("locked");
+  });
+});
+
+describe("requestCorrectionForApplicationRecord", () => {
+  async function seedPendingReview() {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs(),
+      },
+      TEST_APPLICATOR
+    );
+    return submitApplicationRecord(draft.id, TEST_APPLICATOR);
+  }
+
+  it("rejects correction requests on draft records", async () => {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs(),
+      },
+      TEST_APPLICATOR
+    );
+
+    await expect(
+      requestCorrectionForApplicationRecord(draft.id, TEST_MANAGER, "Fix x.")
+    ).rejects.toThrow(/pending review/i);
+  });
+
+  it("rejects correction requests on locked records", async () => {
+    const submitted = await seedPendingReview();
+    await acceptAndLockApplicationRecord(submitted.id, TEST_MANAGER);
+
+    await expect(
+      requestCorrectionForApplicationRecord(
+        submitted.id,
+        TEST_MANAGER,
+        "Fix x."
+      )
+    ).rejects.toThrow(/pending review/i);
+  });
+
+  it("rejects correction requests on records already in needs_correction", async () => {
+    const submitted = await seedPendingReview();
+    await requestCorrectionForApplicationRecord(
+      submitted.id,
+      TEST_MANAGER,
+      "Fix x."
+    );
+
+    await expect(
+      requestCorrectionForApplicationRecord(
+        submitted.id,
+        TEST_MANAGER,
+        "Fix y."
+      )
+    ).rejects.toThrow(/pending review/i);
+  });
+
+  it("rejects unknown record ids", async () => {
+    await expect(
+      requestCorrectionForApplicationRecord(
+        "does-not-exist",
+        TEST_MANAGER,
+        "Fix x."
+      )
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("rejects empty or whitespace-only correction notes", async () => {
+    const submitted = await seedPendingReview();
+
+    await expect(
+      requestCorrectionForApplicationRecord(submitted.id, TEST_MANAGER, "")
+    ).rejects.toThrow(/correction notes/i);
+
+    await expect(
+      requestCorrectionForApplicationRecord(submitted.id, TEST_MANAGER, "   ")
+    ).rejects.toThrow(/correction notes/i);
+
+    const stillPending = await db.applicationRecords.get(submitted.id);
+    expect(stillPending?.workflowStatus).toBe("pending_review");
+  });
+
+  it("transitions pending_review to needs_correction and records manager review", async () => {
+    const submitted = await seedPendingReview();
+
+    const updated = await requestCorrectionForApplicationRecord(
+      submitted.id,
+      TEST_MANAGER,
+      "Acres treated looks wrong."
+    );
+
+    expect(updated.workflowStatus).toBe("needs_correction");
+    expect(updated.managerInputs.reviewStatus).toBe("needs_correction");
+    expect(updated.managerInputs.reviewedBy).toBe(TEST_MANAGER.displayName);
+    expect(updated.managerInputs.reviewedAt).toBeDefined();
+    expect(updated.managerInputs.reviewNotes).toBe(
+      "Acres treated looks wrong."
+    );
+  });
+
+  it("appends one correction_requested event with manager actor identity and notes metadata", async () => {
+    const submitted = await seedPendingReview();
+    const eventsBefore = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(submitted.id)
+      .toArray();
+
+    await requestCorrectionForApplicationRecord(
+      submitted.id,
+      TEST_MANAGER,
+      "Acres treated looks wrong."
+    );
+
+    const eventsAfter = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(submitted.id)
+      .toArray();
+
+    expect(eventsAfter).toHaveLength(eventsBefore.length + 1);
+
+    const correction = eventsAfter.find((e) => e.type === "correction_requested");
+    expect(correction).toBeDefined();
+    expect(correction!.actorUserId).toBe(TEST_MANAGER.userId);
+    expect(correction!.actorDisplayName).toBe(TEST_MANAGER.displayName);
+    expect(correction!.metadata?.correctionNotes).toBe(
+      "Acres treated looks wrong."
+    );
+  });
+
+  it("does not mutate contractorInputs", async () => {
+    const submitted = await seedPendingReview();
+    const before = submitted.contractorInputs;
+
+    await requestCorrectionForApplicationRecord(
+      submitted.id,
+      TEST_MANAGER,
+      "Fix x."
+    );
+
+    const after = (await db.applicationRecords.get(submitted.id))!
+      .contractorInputs;
+    expect(after).toEqual(before);
+  });
+
+  it("does not mutate the ProductSnapshot row referenced by the record", async () => {
+    const submitted = await seedPendingReview();
+    const snapshotBefore = await db.productSnapshots.get(
+      submitted.productSnapshotId!
+    );
+
+    await requestCorrectionForApplicationRecord(
+      submitted.id,
+      TEST_MANAGER,
+      "Fix x."
+    );
+
+    const snapshotAfter = await db.productSnapshots.get(
+      submitted.productSnapshotId!
+    );
+    expect(snapshotAfter).toEqual(snapshotBefore);
+  });
+
+  it("preserves existing submitted and product_snapshot_created events", async () => {
+    const submitted = await seedPendingReview();
+    const submittedEventsBefore = (
+      await db.recordEvents
+        .where("applicationRecordId")
+        .equals(submitted.id)
+        .toArray()
+    ).filter(
+      (e) => e.type === "submitted" || e.type === "product_snapshot_created"
+    );
+
+    await requestCorrectionForApplicationRecord(
+      submitted.id,
+      TEST_MANAGER,
+      "Fix x."
+    );
+
+    const submittedEventsAfter = (
+      await db.recordEvents
+        .where("applicationRecordId")
+        .equals(submitted.id)
+        .toArray()
+    ).filter(
+      (e) => e.type === "submitted" || e.type === "product_snapshot_created"
+    );
+
+    expect(submittedEventsAfter).toEqual(submittedEventsBefore);
   });
 });

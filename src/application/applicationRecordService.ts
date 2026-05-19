@@ -250,6 +250,71 @@ export async function acceptAndLockApplicationRecord(
   return lockedRecord;
 }
 
+export async function requestCorrectionForApplicationRecord(
+  recordId: string,
+  actor: ActorContext,
+  correctionNotes: string
+) {
+  const trimmedNotes = correctionNotes?.trim();
+  if (!trimmedNotes) {
+    throw new Error("Correction notes are required to request corrections.");
+  }
+
+  const record = await db.applicationRecords.get(recordId);
+
+  if (!record) {
+    throw new Error("Application record not found.");
+  }
+
+  if (record.workflowStatus !== "pending_review") {
+    throw new Error(
+      "Only pending review records can receive correction requests."
+    );
+  }
+
+  const reviewedAt = now();
+
+  const updatedRecord: ApplicationRecord = {
+    ...record,
+    workflowStatus: "needs_correction",
+    managerInputs: {
+      reviewStatus: "needs_correction",
+      reviewedBy: actor.displayName,
+      reviewedAt,
+      reviewNotes: trimmedNotes,
+    },
+    system: {
+      ...record.system,
+      lastUpdatedAt: reviewedAt,
+    },
+  };
+
+  const event: ApplicationRecordEvent = {
+    id: id(),
+    applicationRecordId: record.id,
+    type: "correction_requested",
+    actorUserId: actor.userId,
+    actorDisplayName: actor.displayName,
+    occurredAt: reviewedAt,
+    message: "Manager requested corrections on application record.",
+    metadata: {
+      correctionNotes: trimmedNotes,
+    },
+  };
+
+  await db.transaction(
+    "rw",
+    db.applicationRecords,
+    db.recordEvents,
+    async () => {
+      await db.applicationRecords.put(updatedRecord);
+      await db.recordEvents.add(event);
+    }
+  );
+
+  return updatedRecord;
+}
+
 export function productToContractorProductFields(product: Product) {
   return {
     productId: product.id,

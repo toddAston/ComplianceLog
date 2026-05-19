@@ -12,6 +12,7 @@ import { seedDemoData, DEMO_ORG_ID } from "../../db/seed";
 import {
   acceptAndLockApplicationRecord,
   createDraftApplicationRecord,
+  requestCorrectionForApplicationRecord,
   submitApplicationRecord,
   type ActorContext,
 } from "../../application/applicationRecordService";
@@ -95,6 +96,13 @@ async function seedLockedRecord(reviewNotes?: string) {
     TEST_MANAGER,
     reviewNotes
   );
+}
+
+async function seedNeedsCorrectionRecord(
+  notes: string = "Acres treated looks wrong."
+) {
+  const submitted = await seedPendingReviewRecord();
+  return requestCorrectionForApplicationRecord(submitted.id, TEST_MANAGER, notes);
 }
 
 beforeEach(async () => {
@@ -480,5 +488,130 @@ describe("DraftsList export affordance", () => {
     expect(
       within(rowB).getByRole("button", { name: /view export/i })
     ).toBeTruthy();
+  });
+});
+
+describe("DraftsList request-correction affordance", () => {
+  it("shows Request correction only on pending_review rows (not draft, locked, or needs_correction)", async () => {
+    const draft = await seedAttestedDraft();
+    const pending = await seedPendingReviewRecord();
+    const locked = await seedLockedRecord();
+    const corrected = await seedNeedsCorrectionRecord();
+
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${draft.id}`);
+    await screen.findByTestId(`workflow-${pending.id}`);
+    await screen.findByTestId(`workflow-${locked.id}`);
+    await screen.findByTestId(`workflow-${corrected.id}`);
+
+    const buttons = screen.getAllByRole("button", {
+      name: /request correction/i,
+    });
+    expect(buttons).toHaveLength(1);
+
+    const draftRow = screen.getByTestId(`workflow-${draft.id}`).closest("li")!;
+    expect(
+      within(draftRow).queryByRole("button", { name: /request correction/i })
+    ).toBeNull();
+
+    const lockedRow = screen
+      .getByTestId(`workflow-${locked.id}`)
+      .closest("li")!;
+    expect(
+      within(lockedRow).queryByRole("button", { name: /request correction/i })
+    ).toBeNull();
+
+    const correctedRow = screen
+      .getByTestId(`workflow-${corrected.id}`)
+      .closest("li")!;
+    expect(
+      within(correctedRow).queryByRole("button", {
+        name: /request correction/i,
+      })
+    ).toBeNull();
+
+    const pendingRow = screen
+      .getByTestId(`workflow-${pending.id}`)
+      .closest("li")!;
+    expect(
+      within(pendingRow).getByRole("button", { name: /request correction/i })
+    ).toBeTruthy();
+  });
+
+  it("disables Request correction until notes are entered", async () => {
+    const pending = await seedPendingReviewRecord();
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${pending.id}`);
+
+    const btn = screen.getByRole("button", {
+      name: /request correction/i,
+    }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText(/correction notes/i), {
+      target: { value: "Acres looks wrong." },
+    });
+    expect(
+      (screen.getByRole("button", { name: /request correction/i }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+  });
+
+  it("transitions pending_review to needs_correction and records notes on the event with the UI manager actor", async () => {
+    const pending = await seedPendingReviewRecord();
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${pending.id}`);
+
+    fireEvent.change(screen.getByLabelText(/correction notes/i), {
+      target: { value: "Acres treated looks wrong." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /request correction/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`workflow-${pending.id}`).textContent).toBe(
+        "needs_correction"
+      );
+    });
+
+    const updated = await db.applicationRecords.get(pending.id);
+    expect(updated?.managerInputs.reviewStatus).toBe("needs_correction");
+    expect(updated?.managerInputs.reviewedBy).toBe("Demo Manager");
+    expect(updated?.managerInputs.reviewNotes).toBe(
+      "Acres treated looks wrong."
+    );
+
+    const events = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(pending.id)
+      .toArray();
+    const correction = events.find((e) => e.type === "correction_requested");
+    expect(correction).toBeDefined();
+    expect(correction!.actorUserId).toBe("user-demo-manager");
+    expect(correction!.actorDisplayName).toBe("Demo Manager");
+    expect(correction!.metadata?.correctionNotes).toBe(
+      "Acres treated looks wrong."
+    );
+  });
+
+  it("needs_correction rows show no Submit, Lock, Request correction, or View export buttons", async () => {
+    const corrected = await seedNeedsCorrectionRecord();
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${corrected.id}`);
+    const row = screen
+      .getByTestId(`workflow-${corrected.id}`)
+      .closest("li")!;
+
+    expect(within(row).queryByRole("button", { name: /submit/i })).toBeNull();
+    expect(within(row).queryByRole("button", { name: /^lock$/i })).toBeNull();
+    expect(
+      within(row).queryByRole("button", { name: /request correction/i })
+    ).toBeNull();
+    expect(
+      within(row).queryByRole("button", { name: /view export/i })
+    ).toBeNull();
   });
 });
