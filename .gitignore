@@ -67,7 +67,8 @@ web_modules/
 
 # dotenv environment variable files
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
@@ -141,3 +142,28 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# OS Files
+Thumbs.db
+
+# Build Output
+build/
+
+# Project-Specific
+*.excalidraw~
+*.tmp
+*.bak
+
+# Local development files
+debug-logs/
+temp/
