@@ -1,4 +1,4 @@
-import { db } from "./fieldlogDb";
+import { db } from "../db/fieldlogDb";
 import type {
   ApplicationRecord,
   ApplicationRecordEvent,
@@ -6,7 +6,11 @@ import type {
   Product,
   ProductSnapshot,
 } from "../domain/types";
-import { DEMO_APPLICATOR_USER_ID, DEMO_MANAGER_USER_ID } from "./seed";
+
+export type ActorContext = {
+  userId: string;
+  displayName: string;
+};
 
 const id = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
@@ -20,7 +24,8 @@ export async function createDraftApplicationRecord(
     | "system"
     | "managerInputs"
     | "complianceReviewRequired"
-  >
+  >,
+  actor: ActorContext
 ) {
   const createdAt = now();
 
@@ -46,8 +51,8 @@ export async function createDraftApplicationRecord(
     id: id(),
     applicationRecordId: draft.id,
     type: "created",
-    actorUserId: DEMO_APPLICATOR_USER_ID,
-    actorDisplayName: "Demo Applicator",
+    actorUserId: actor.userId,
+    actorDisplayName: actor.displayName,
     occurredAt: createdAt,
     message: "Application record draft created locally.",
   };
@@ -65,7 +70,10 @@ export async function createDraftApplicationRecord(
   return draft;
 }
 
-export async function submitApplicationRecord(recordId: string) {
+export async function submitApplicationRecord(
+  recordId: string,
+  actor: ActorContext
+) {
   const record = await db.applicationRecords.get(recordId);
 
   if (!record) {
@@ -103,7 +111,7 @@ export async function submitApplicationRecord(recordId: string) {
     productSnapshotId: productSnapshot.id,
     contractorInputs: {
       ...record.contractorInputs,
-      submittedBy: "Demo Applicator",
+      submittedBy: actor.displayName,
       submittedAt,
     },
     system: {
@@ -120,8 +128,8 @@ export async function submitApplicationRecord(recordId: string) {
       id: id(),
       applicationRecordId: record.id,
       type: "submitted",
-      actorUserId: DEMO_APPLICATOR_USER_ID,
-      actorDisplayName: "Demo Applicator",
+      actorUserId: actor.userId,
+      actorDisplayName: actor.displayName,
       occurredAt: submittedAt,
       message: "Application record submitted by contractor.",
     },
@@ -129,8 +137,8 @@ export async function submitApplicationRecord(recordId: string) {
       id: id(),
       applicationRecordId: record.id,
       type: "product_snapshot_created",
-      actorUserId: DEMO_APPLICATOR_USER_ID,
-      actorDisplayName: "Demo Applicator",
+      actorUserId: actor.userId,
+      actorDisplayName: actor.displayName,
       occurredAt: submittedAt,
       message: "Product reference snapshot copied into application record.",
       metadata: {
@@ -158,6 +166,7 @@ export async function submitApplicationRecord(recordId: string) {
 
 export async function acceptAndLockApplicationRecord(
   recordId: string,
+  actor: ActorContext,
   reviewNotes?: string
 ) {
   const record = await db.applicationRecords.get(recordId);
@@ -181,7 +190,7 @@ export async function acceptAndLockApplicationRecord(
     id: id(),
     applicationRecordId: record.id,
     reviewStatus: "accepted",
-    reviewedBy: "Demo Manager",
+    reviewedBy: actor.displayName,
     reviewedAt,
     reviewNotes,
   };
@@ -191,7 +200,7 @@ export async function acceptAndLockApplicationRecord(
     workflowStatus: "locked",
     managerInputs: {
       reviewStatus: "accepted",
-      reviewedBy: "Demo Manager",
+      reviewedBy: actor.displayName,
       reviewedAt,
       reviewNotes,
     },
@@ -207,8 +216,8 @@ export async function acceptAndLockApplicationRecord(
       id: id(),
       applicationRecordId: record.id,
       type: "reviewed",
-      actorUserId: DEMO_MANAGER_USER_ID,
-      actorDisplayName: "Demo Manager",
+      actorUserId: actor.userId,
+      actorDisplayName: actor.displayName,
       occurredAt: reviewedAt,
       message: "Manager reviewed application record.",
       metadata: {
@@ -219,8 +228,8 @@ export async function acceptAndLockApplicationRecord(
       id: id(),
       applicationRecordId: record.id,
       type: "locked",
-      actorUserId: DEMO_MANAGER_USER_ID,
-      actorDisplayName: "Demo Manager",
+      actorUserId: actor.userId,
+      actorDisplayName: actor.displayName,
       occurredAt: lockedAt,
       message: "Application record locked as immutable evidence.",
     },
