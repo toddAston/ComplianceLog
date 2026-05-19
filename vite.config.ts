@@ -11,6 +11,19 @@ export default defineConfig({
   optimizeDeps: {
     entries: ['index.html'],
   },
+  server: {
+    // Keep chokidar out of reference/vendor-docs/ (~50k upstream-docs files).
+    // Without this the dev server can take minutes to serve the first request
+    // and HMR thrashes on file events from cloned vendor repos.
+    watch: {
+      ignored: ['**/reference/vendor-docs/**'],
+    },
+    // fs.deny prevents the dev server from serving any file under
+    // reference/vendor-docs/ even if a stray import or URL reaches it.
+    fs: {
+      deny: ['**/reference/vendor-docs/**'],
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
