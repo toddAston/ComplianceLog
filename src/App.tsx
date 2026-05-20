@@ -8,7 +8,9 @@ import {
 } from "./db/queries";
 import { DraftApplicationRecordForm } from "./ui/application-record/DraftApplicationRecordForm";
 import { DraftsList } from "./ui/application-record/DraftsList";
+import { FarmManager } from "./ui/farm/FarmManager";
 import { OfflineBadge } from "./ui/system/OfflineBadge";
+import { DEMO_ORG_ID } from "./db/seed";
 
 function App() {
   const organizations = useAllOrganizations();
@@ -35,6 +37,11 @@ function App() {
       <section style={{ marginTop: "2rem" }}>
         <h2>Records ({applicationRecords.length})</h2>
         <DraftsList />
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Manage farms</h2>
+        <FarmManager organizationId={DEMO_ORG_ID} />
       </section>
 
       <section style={{ marginTop: "2rem", borderTop: "1px solid #eee", paddingTop: "1rem" }}>
