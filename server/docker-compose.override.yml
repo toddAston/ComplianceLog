@@ -1,0 +1,26 @@
+# DEV-ONLY overrides, auto-merged by `docker compose`. Runs the API from source
+# with hot reload instead of the distroless production image, and exposes Postgres
+# for inspection. Never used in production (the prod image stays clean).
+#
+# To run the production image locally instead, disable this file:
+#   docker compose -f docker-compose.yml up --build
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  api:
+    # Replace the distroless image with a full Node image that has npm + a shell.
+    image: node:22-bookworm-slim
+    build: !reset null
+    working_dir: /repo/server
+    command: ["sh", "-c", "npm install && npm run dev"]
+    volumes:
+      - ..:/repo
+    environment:
+      NODE_ENV: development

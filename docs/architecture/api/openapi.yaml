@@ -1,0 +1,1407 @@
+openapi: 3.1.0
+info:
+  title: FieldLog API
+  version: 0.1.0
+  description: >
+    HTTP API the offline-first FieldLog client syncs against, and that the future
+    contractor mobile app and manager web app consume. Component schemas are
+    structurally derived from the client Zod source of truth in
+    `src/domain/schemas.ts`; server-only fields (serverId == id, etag,
+    createdByUserId) are additive and called out. The system captures immutable
+    pesticide-application evidence; nothing may alter a record after `locked`
+    except appending an `exported` event.
+  contact:
+    name: FieldLog (ComplianceLog)
+    url: https://github.com/toddAston/ComplianceLog
+servers:
+  - url: https://api.fieldlog.example/v1
+    description: Production (placeholder)
+  - url: http://localhost:8080/v1
+    description: Local compose
+
+tags:
+  - name: health
+    description: Liveness/readiness probes (unauthenticated).
+  - name: auth
+    description: Authentication and session lifecycle.
+  - name: org
+    description: Organization and reference data.
+  - name: records
+    description: Application records and their lifecycle.
+  - name: sync
+    description: Offline batch synchronization.
+  - name: exports
+    description: Locked-record PDF export jobs.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: Returns 200 if the process is up. Does not touch dependencies.
+      operationId: getHealthz
+      security: []
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: Returns 200 only if Postgres and Redis are reachable.
+      operationId: getReadyz
+      security: []
+      responses:
+        "200":
+          description: Dependencies reachable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadinessStatus" }
+        "503":
+          description: A dependency is unavailable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadinessStatus" }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Authenticate and start a session
+      description: Verifies credentials and returns an access token plus a refresh cookie.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Authenticated. Returns access token; refresh token set as HttpOnly cookie.
+          headers:
+            RateLimit-Limit: { $ref: "#/components/headers/RateLimitLimit" }
+            RateLimit-Remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate the refresh token and mint a new access token
+      description: Rotates the refresh token (revoking the old one) and issues a new access token.
+      operationId: refreshSession
+      security: []
+      responses:
+        "200":
+          description: New token pair issued; old refresh token revoked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current session
+      description: Revokes the caller's current refresh-token family and clears the cookie.
+      operationId: logout
+      responses:
+        "204": { description: Session revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /auth/password-reset/request:
+    post:
+      tags: [auth]
+      summary: Request a password reset token
+      description: Always returns 202 to avoid account enumeration.
+      operationId: requestPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordResetRequest" }
+      responses:
+        "202":
+          description: Accepted. If the account exists a reset email was sent.
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      summary: Confirm a password reset
+      description: Consumes a single-use reset token, sets the new password, and revokes all sessions.
+      operationId: confirmPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordResetConfirm" }
+      responses:
+        "204": { description: Password updated; all sessions revoked. }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /organization:
+    get:
+      tags: [org]
+      summary: Get the caller's organization
+      description: Returns the organization the authenticated user belongs to.
+      operationId: getOrganization
+      responses:
+        "200":
+          description: The caller's organization.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /farms:
+    get:
+      tags: [org]
+      summary: List farms in the caller's organization
+      description: Returns a cursor-paginated list of farms scoped to the caller's organization.
+      operationId: listFarms
+      parameters:
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Page of farms.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FarmPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [org]
+      summary: Create a farm
+      description: Creates a farm in the caller's organization (manager-only).
+      operationId: createFarm
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FarmCreate" }
+      responses:
+        "201":
+          description: Farm created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /farms/{farmId}:
+    parameters:
+      - { $ref: "#/components/parameters/FarmId" }
+    patch:
+      tags: [org]
+      summary: Rename a farm
+      description: Renames a farm; the new name must be unique within the organization.
+      operationId: renameFarm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FarmRename" }
+      responses:
+        "200":
+          description: Farm updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Farm" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /fields:
+    get:
+      tags: [org]
+      summary: List field sites
+      description: Returns a cursor-paginated list of field sites, optionally filtered by farm.
+      operationId: listFields
+      parameters:
+        - name: farmId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Filter to one farm.
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Page of field sites.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldSitePage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [org]
+      summary: Create a field site
+      description: Creates a field site under a farm (manager-only); name unique per farm.
+      operationId: createField
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FieldSiteCreate" }
+      responses:
+        "201":
+          description: Field created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldSite" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /fields/{fieldId}:
+    parameters:
+      - { $ref: "#/components/parameters/FieldId" }
+    patch:
+      tags: [org]
+      summary: Update a field site
+      description: Updates a field site's name, default acres, or default crop/site.
+      operationId: updateField
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FieldSiteUpdate" }
+      responses:
+        "200":
+          description: Field updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldSite" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /applicators:
+    get:
+      tags: [org]
+      summary: List applicators
+      description: Returns a cursor-paginated list of applicators in the caller's organization.
+      operationId: listApplicators
+      parameters:
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Page of applicators.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicatorPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [org]
+      summary: Invite/register an applicator
+      description: >
+        Manager-only. Creates an applicator and (when invite flows become real
+        auth artifacts) issues a server-side invite token. The v0.1 client's
+        locally-generated UUID token is replaced server-side.
+      operationId: inviteApplicator
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplicatorInvite" }
+      responses:
+        "201":
+          description: Applicator created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicatorInviteResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /products:
+    get:
+      tags: [org]
+      summary: Search the product catalog
+      description: Searches the shared product catalog by name/EPA reg number and RUP status.
+      operationId: listProducts
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+          description: Free-text match on name or EPA registration number.
+        - name: rupStatus
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/RupStatus" }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Page of products.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /application-records:
+    get:
+      tags: [records]
+      summary: List application records
+      description: >
+        Applicators see only records they created; managers see all records in
+        their organization. Use `workflowStatus=pending_review` for the review queue.
+      operationId: listApplicationRecords
+      parameters:
+        - name: workflowStatus
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/WorkflowStatus" }
+        - name: syncStatus
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/SyncStatus" }
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [systemCreatedAt, -systemCreatedAt, applicationDate, -applicationDate]
+            default: -systemCreatedAt
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Page of application records.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationRecordPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [records]
+      summary: Create a draft application record
+      description: >
+        Accepts a client-generated UUID. Server forces workflowStatus=draft and
+        re-validates contractorInputs against the Zod schema.
+      operationId: createApplicationRecord
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplicationRecordCreate" }
+      responses:
+        "201":
+          description: Draft created.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationRecord" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /application-records/{recordId}:
+    parameters:
+      - { $ref: "#/components/parameters/RecordId" }
+    get:
+      tags: [records]
+      summary: Get an application record
+      description: Returns a single application record (org-scoped; applicators see only their own).
+      operationId: getApplicationRecord
+      responses:
+        "200":
+          description: The application record.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [records]
+      summary: Edit a draft / needs-correction record
+      description: >
+        Only permitted while workflowStatus is `draft` or `needs_correction`.
+        Requires `If-Match` with the current ETag (optimistic concurrency).
+      operationId: updateApplicationRecord
+      parameters:
+        - { $ref: "#/components/parameters/IfMatch" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContractorInputsPatch" }
+      responses:
+        "200":
+          description: Record updated.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationRecord" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /application-records/{recordId}/submit:
+    parameters:
+      - { $ref: "#/components/parameters/RecordId" }
+    post:
+      tags: [records]
+      summary: Submit a draft (draft → pending_review)
+      description: >
+        Server re-runs compliance checks; a `blocked`-severity failure (e.g.
+        RUP_UNCERTIFIED) rejects with 422. On success it freezes the Product
+        Snapshot in the same transaction and appends submitted +
+        product_snapshot_created + compliance_check_run events.
+      operationId: submitApplicationRecord
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - { $ref: "#/components/parameters/IfMatch" }
+      responses:
+        "200":
+          description: Submitted; now pending_review.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /application-records/{recordId}/review:
+    parameters:
+      - { $ref: "#/components/parameters/RecordId" }
+    post:
+      tags: [records]
+      summary: Manager review decision (accept-and-lock or request-correction)
+      description: >
+        Manager-only. `accepted` locks the record (pending_review → locked) and
+        writes a review row. `needs_correction` requires reviewNotes and moves it
+        to needs_correction.
+      operationId: reviewApplicationRecord
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - { $ref: "#/components/parameters/IfMatch" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewDecision" }
+      responses:
+        "200":
+          description: Review applied.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationRecord" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /application-records/{recordId}/resubmit:
+    parameters:
+      - { $ref: "#/components/parameters/RecordId" }
+    post:
+      tags: [records]
+      summary: Resubmit a corrected record (needs_correction → pending_review)
+      description: Applies corrected fields, re-runs compliance, and returns the record to review.
+      operationId: resubmitApplicationRecord
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+        - { $ref: "#/components/parameters/IfMatch" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContractorInputsPatch" }
+      responses:
+        "200":
+          description: Resubmitted; now pending_review.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApplicationRecord" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /application-records/{recordId}/export:
+    parameters:
+      - { $ref: "#/components/parameters/RecordId" }
+    post:
+      tags: [exports]
+      summary: Request a PDF export of a locked record
+      description: >
+        Only locked records may be exported. Enqueues a background job and returns
+        a job id + polling URL. Does NOT stream the PDF synchronously. Emits an
+        `exported` event on completion (locked → exported, the only mutation
+        permitted after lock).
+      operationId: requestApplicationRecordExport
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      responses:
+        "202":
+          description: Export job accepted.
+          headers:
+            Location:
+              description: Polling URL for the export job.
+              schema: { type: string, format: uri }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExportJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /application-records/{recordId}/events:
+    parameters:
+      - { $ref: "#/components/parameters/RecordId" }
+    get:
+      tags: [records]
+      summary: List the append-only event log for a record
+      description: Returns the chronological, append-only event log for a record.
+      operationId: listRecordEvents
+      parameters:
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Page of record events (chronological).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEventPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /exports/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [exports]
+      summary: Poll an export job
+      description: Returns export job status; on success includes a short-TTL signed download URL.
+      operationId: getExportJob
+      responses:
+        "200":
+          description: Job status; `succeeded` includes a short-TTL signed download URL.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExportJob" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /sync/batch:
+    post:
+      tags: [sync]
+      summary: Flush a batch of locally-queued mutations
+      description: >
+        Offline-first reconciliation. Each operation carries a client UUID and an
+        idempotency key; the server replays stored results on retry. Per-operation
+        results report applied / conflict (stale ETag) / rejected. The server
+        authors its own canonical record events on receipt — clients do not push
+        event rows. See api_architecture.md §5 for the conflict-resolution policy.
+      operationId: syncBatch
+      parameters:
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncBatchRequest" }
+      responses:
+        "200":
+          description: Per-operation results.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncBatchResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived access token from /auth/login or /auth/refresh.
+
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+      description: Opaque cursor from a prior page's `nextCursor`.
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+      description: Client-generated UUID; the server replays the stored result on retry.
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string }
+      description: Current ETag of the resource for optimistic concurrency.
+    FarmId:
+      name: farmId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    FieldId:
+      name: fieldId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RecordId:
+      name: recordId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  headers:
+    RateLimitLimit:
+      description: Request quota for the current window.
+      schema: { type: integer }
+    RateLimitRemaining:
+      description: Remaining requests in the current window.
+      schema: { type: integer }
+    RetryAfter:
+      description: Seconds until the rate-limit window resets.
+      schema: { type: integer }
+    ETag:
+      description: Opaque concurrency token for the resource.
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: AUTH_REQUIRED, message: Authentication required., requestId: 01J9Z3K8F2 }
+    Forbidden:
+      description: Authenticated but not permitted (role or ownership).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: FORBIDDEN, message: You do not have access to this resource., requestId: 01J9Z3K8F2 }
+    NotFound:
+      description: Resource not found (or not in the caller's org).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: NOT_FOUND, message: Resource not found., requestId: 01J9Z3K8F2 }
+    Conflict:
+      description: Conflicting state (e.g. duplicate, locked record, invalid transition).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: STATUS_TRANSITION_INVALID, message: Only draft records can be submitted., requestId: 01J9Z3K8F2 }
+    PreconditionFailed:
+      description: If-Match ETag did not match current state (stale client).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: CONFLICT_STALE_RECORD, message: Record was modified; refetch and retry., requestId: 01J9Z3K8F2 }
+    ValidationError:
+      description: Malformed request (bad JSON, missing required header).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: VALIDATION_FAILED, message: Request body failed validation., requestId: 01J9Z3K8F2 }
+    UnprocessableEntity:
+      description: Well-formed but semantically invalid (Zod/domain rule failure).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: VALIDATION_FAILED
+              message: Restricted-use product applied by uncertified applicator — blocked by RSMo 281.037(9).
+              requestId: 01J9Z3K8F2
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+        RateLimit-Limit: { $ref: "#/components/headers/RateLimitLimit" }
+        RateLimit-Remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: RATE_LIMITED, message: Too many requests., requestId: 01J9Z3K8F2 }
+    InternalError:
+      description: Unexpected server error. Body never leaks internals.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: INTERNAL, message: An unexpected error occurred., requestId: 01J9Z3K8F2 }
+
+  schemas:
+    # ---- Enums (mirror src/domain/schemas.ts:3-45) ----
+    RupStatus:
+      type: string
+      enum: [yes, no, unknown]
+    WorkflowStatus:
+      type: string
+      enum: [draft, submitted, pending_review, needs_correction, accepted, locked, exported]
+    SyncStatus:
+      type: string
+      enum: [local_only, queued, syncing, synced, sync_failed]
+    ReviewStatus:
+      type: string
+      enum: [not_reviewed, accepted, needs_correction, rejected]
+    UserRole:
+      type: string
+      enum: [applicator, manager]
+    RecordEventType:
+      type: string
+      enum:
+        - created
+        - updated
+        - submitted
+        - product_snapshot_created
+        - reviewed
+        - correction_requested
+        - correction_submitted
+        - compliance_check_run
+        - accepted
+        - locked
+        - exported
+        - sync_failed
+
+    # ---- Error envelope ----
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, requestId]
+          properties:
+            code: { type: string, description: Stable machine code (see error_codes.md). }
+            message: { type: string, description: Safe, human-readable summary. Never a stack trace. }
+            requestId: { type: string, description: Correlates to server logs. }
+            details:
+              type: array
+              description: Optional field-level validation issues.
+              items:
+                type: object
+                additionalProperties: false
+                properties:
+                  path: { type: string }
+                  message: { type: string }
+
+    # ---- Health ----
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok] }
+    ReadinessStatus:
+      type: object
+      additionalProperties: false
+      required: [status, checks]
+      properties:
+        status: { type: string, enum: [ready, not_ready] }
+        checks:
+          type: object
+          additionalProperties: false
+          required: [postgres, redis]
+          properties:
+            postgres: { type: string, enum: [up, down] }
+            redis: { type: string, enum: [up, down] }
+
+    # ---- Auth ----
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1 }
+        rememberMe: { type: boolean, default: false }
+    AuthTokens:
+      type: object
+      additionalProperties: false
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresIn: { type: integer, description: Access-token TTL in seconds. }
+        user: { $ref: "#/components/schemas/User" }
+    PasswordResetRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    PasswordResetConfirm:
+      type: object
+      additionalProperties: false
+      required: [token, newPassword]
+      properties:
+        token: { type: string }
+        newPassword: { type: string, minLength: 12 }
+
+    # ---- Core domain (mirror src/domain/schemas.ts) ----
+    Organization:
+      type: object
+      additionalProperties: false
+      required: [id, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, displayName, role, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        displayName: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        createdAt: { type: string, format: date-time }
+
+    Farm:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    FarmCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+    FarmRename:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+    FarmPage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Farm" }
+        page: { $ref: "#/components/schemas/PageMeta" }
+
+    FieldSite:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, farmId, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        farmId: { type: string, format: uuid }
+        name: { type: string }
+        defaultAcres: { type: number, minimum: 0 }
+        defaultCropOrSite: { type: string }
+        createdAt: { type: string, format: date-time }
+    FieldSiteCreate:
+      type: object
+      additionalProperties: false
+      required: [farmId, name]
+      properties:
+        farmId: { type: string, format: uuid }
+        name: { type: string, minLength: 1 }
+        defaultAcres: { type: number, minimum: 0 }
+        defaultCropOrSite: { type: string }
+    FieldSiteUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1 }
+        defaultAcres:
+          type: [number, "null"]
+          minimum: 0
+        defaultCropOrSite:
+          type: [string, "null"]
+    FieldSitePage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/FieldSite" }
+        page: { $ref: "#/components/schemas/PageMeta" }
+
+    Applicator:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, contractorCompanyName, applicatorName, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        contractorCompanyName: { type: string }
+        applicatorName: { type: string }
+        certificationNumber: { type: string }
+        createdAt: { type: string, format: date-time }
+    ApplicatorInvite:
+      type: object
+      additionalProperties: false
+      required: [applicatorName, contractorCompanyName]
+      properties:
+        applicatorName: { type: string, minLength: 1 }
+        contractorCompanyName: { type: string, minLength: 1 }
+        certificationNumber: { type: string }
+    ApplicatorInviteResult:
+      type: object
+      additionalProperties: false
+      required: [applicator]
+      properties:
+        applicator: { $ref: "#/components/schemas/Applicator" }
+        inviteLink:
+          type: string
+          format: uri
+          description: Server-issued invite link (replaces the v0.1 client's local UUID token).
+    ApplicatorPage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Applicator" }
+        page: { $ref: "#/components/schemas/PageMeta" }
+
+    Product:
+      type: object
+      additionalProperties: false
+      required: [id, catalogVersion, name, epaRegistrationNumber, rupStatus, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        catalogVersion: { type: string }
+        name: { type: string }
+        epaRegistrationNumber: { type: string, pattern: "^[A-Za-z0-9-]+$" }
+        rupStatus: { $ref: "#/components/schemas/RupStatus" }
+        createdAt: { type: string, format: date-time }
+    ProductPage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        page: { $ref: "#/components/schemas/PageMeta" }
+
+    WeatherSnapshot:
+      type: object
+      additionalProperties: false
+      required: [source, capturedAt]
+      properties:
+        source: { type: string, enum: [nws_observation, nws_forecast_grid, manual, stale_cache] }
+        stationId: { type: string }
+        observedAt: { type: string, format: date-time }
+        capturedAt: { type: string, format: date-time }
+
+    ProductSnapshot:
+      type: object
+      additionalProperties: false
+      required: [id, applicationRecordId, productName, epaRegistrationNumber, rupStatus, catalogVersion, snapshotCreatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        applicationRecordId: { type: string, format: uuid }
+        sourceProductId: { type: string, format: uuid }
+        productName: { type: string }
+        epaRegistrationNumber: { type: string, pattern: "^[A-Za-z0-9-]+$" }
+        rupStatus: { $ref: "#/components/schemas/RupStatus" }
+        catalogVersion: { type: string }
+        snapshotCreatedAt: { type: string, format: date-time }
+
+    ContractorInputs:
+      type: object
+      additionalProperties: false
+      required:
+        - applicatorId
+        - applicatorName
+        - company
+        - farmId
+        - farmName
+        - fieldId
+        - fieldName
+        - cropOrSite
+        - acresTreated
+        - productName
+        - epaRegistrationNumber
+        - rupStatus
+        - applicationDate
+        - startTime
+        - applicationMethod
+        - rateApplied
+        - totalAmountApplied
+        - temperature
+        - windSpeed
+        - windDirection
+        - attestationConfirmed
+      properties:
+        applicatorId: { type: string, format: uuid }
+        applicatorName: { type: string }
+        company: { type: string }
+        certificationNumber: { type: string }
+        farmId: { type: string, format: uuid }
+        farmName: { type: string }
+        fieldId: { type: string, format: uuid }
+        fieldName: { type: string }
+        cropOrSite: { type: string }
+        acresTreated: { type: string, description: "Wire shape is a string (client); coerced to numeric server-side." }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        epaRegistrationNumber: { type: string, pattern: "^[A-Za-z0-9-]+$" }
+        rupStatus: { $ref: "#/components/schemas/RupStatus" }
+        catalogVersion: { type: string }
+        applicationDate: { type: string, format: date }
+        startTime: { type: string, description: "HH:mm time of day." }
+        endTime: { type: string }
+        applicationMethod: { type: string }
+        rateApplied: { type: string }
+        totalAmountApplied: { type: string }
+        targetPest: { type: string }
+        phi: { type: string }
+        temperature: { type: string }
+        windSpeed: { type: string }
+        windDirection: { type: string }
+        weatherNotes: { type: string }
+        weatherSnapshot: { $ref: "#/components/schemas/WeatherSnapshot" }
+        attestationConfirmed: { type: boolean }
+        submittedBy: { type: string }
+        submittedAt: { type: string, format: date-time }
+    ContractorInputsPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Partial contractorInputs; only draft/needs_correction records accept edits.
+      properties:
+        applicatorName: { type: string }
+        company: { type: string }
+        certificationNumber: { type: string }
+        cropOrSite: { type: string }
+        acresTreated: { type: string }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        epaRegistrationNumber: { type: string, pattern: "^[A-Za-z0-9-]+$" }
+        rupStatus: { $ref: "#/components/schemas/RupStatus" }
+        applicationDate: { type: string, format: date }
+        startTime: { type: string }
+        endTime: { type: string }
+        applicationMethod: { type: string }
+        rateApplied: { type: string }
+        totalAmountApplied: { type: string }
+        targetPest: { type: string }
+        phi: { type: string }
+        temperature: { type: string }
+        windSpeed: { type: string }
+        windDirection: { type: string }
+        weatherNotes: { type: string }
+        attestationConfirmed: { type: boolean }
+
+    ManagerInputs:
+      type: object
+      additionalProperties: false
+      required: [reviewStatus]
+      properties:
+        reviewStatus: { $ref: "#/components/schemas/ReviewStatus" }
+        reviewedBy: { type: string }
+        reviewedAt: { type: string, format: date-time }
+        reviewNotes: { type: string }
+
+    SystemCapturedFields:
+      type: object
+      additionalProperties: false
+      required: [createdAt, createdOffline, lastUpdatedAt]
+      properties:
+        createdAt: { type: string, format: date-time }
+        createdOffline: { type: boolean }
+        lastUpdatedAt: { type: string, format: date-time }
+        lockedAt: { type: string, format: date-time }
+        catalogVersion: { type: string }
+
+    ApplicationRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - organizationId
+        - workflowStatus
+        - syncStatus
+        - contractorInputs
+        - managerInputs
+        - system
+        - complianceReviewRequired
+        - etag
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        workflowStatus: { $ref: "#/components/schemas/WorkflowStatus" }
+        syncStatus: { $ref: "#/components/schemas/SyncStatus" }
+        contractorInputs: { $ref: "#/components/schemas/ContractorInputs" }
+        managerInputs: { $ref: "#/components/schemas/ManagerInputs" }
+        system: { $ref: "#/components/schemas/SystemCapturedFields" }
+        productSnapshotId: { type: string, format: uuid }
+        productSnapshot:
+          allOf:
+            - { $ref: "#/components/schemas/ProductSnapshot" }
+          description: Frozen product reference; embedded once the record is submitted.
+        complianceReviewRequired: { type: boolean }
+        etag:
+          type: string
+          description: Server-added concurrency token. Not present on the v0.1 client.
+        createdByUserId:
+          type: string
+          format: uuid
+          description: Server-added. Not present on the v0.1 client.
+    ApplicationRecordCreate:
+      type: object
+      additionalProperties: false
+      required: [id, contractorInputs]
+      description: >
+        Draft creation. Client supplies its UUID and contractorInputs; the server
+        forces workflowStatus=draft, syncStatus, system fields and managerInputs.
+      properties:
+        id: { type: string, format: uuid }
+        contractorInputs: { $ref: "#/components/schemas/ContractorInputs" }
+        createdOffline: { type: boolean, default: true }
+    ApplicationRecordPage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ApplicationRecord" }
+        page: { $ref: "#/components/schemas/PageMeta" }
+
+    ReviewDecision:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [accepted, needs_correction] }
+        reviewNotes:
+          type: string
+          description: Required when decision is needs_correction.
+      examples:
+        - { decision: accepted, reviewNotes: Verified against label and applicator cert. }
+        - { decision: needs_correction, reviewNotes: Wind direction missing — add before resubmitting. }
+
+    RecordEvent:
+      type: object
+      additionalProperties: false
+      required: [id, applicationRecordId, type, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        applicationRecordId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/RecordEventType" }
+        actorUserId: { type: string, format: uuid }
+        actorDisplayName: { type: string }
+        occurredAt: { type: string, format: date-time }
+        message: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Open-ended event context (compliance outcomes, sync deltas).
+    RecordEventPage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RecordEvent" }
+        page: { $ref: "#/components/schemas/PageMeta" }
+
+    ExportJob:
+      type: object
+      additionalProperties: false
+      required: [jobId, recordId, status]
+      properties:
+        jobId: { type: string }
+        recordId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        downloadUrl:
+          type: string
+          format: uri
+          description: Present only when status=succeeded; short-TTL signed URL.
+        expiresAt: { type: string, format: date-time }
+        error: { type: string }
+
+    PageMeta:
+      type: object
+      additionalProperties: false
+      required: [hasMore]
+      properties:
+        hasMore: { type: boolean }
+        nextCursor:
+          type: string
+          description: Pass as `cursor` to fetch the next page. Absent on the last page.
+
+    # ---- Sync ----
+    SyncOperation:
+      type: object
+      additionalProperties: false
+      required: [opId, kind, recordId]
+      properties:
+        opId: { type: string, format: uuid, description: Client-unique id for this operation (idempotency). }
+        kind:
+          type: string
+          enum: [create_draft, update_inputs, submit, resubmit]
+          description: Lifecycle review/lock/export are manager/server actions, not client-flushed.
+        recordId: { type: string, format: uuid }
+        baseEtag:
+          type: string
+          description: ETag the client last saw; omitted for create_draft.
+        payload:
+          description: Operation payload (ContractorInputs for create, patch for update/resubmit).
+          oneOf:
+            - { $ref: "#/components/schemas/ContractorInputs" }
+            - { $ref: "#/components/schemas/ContractorInputsPatch" }
+    SyncBatchRequest:
+      type: object
+      additionalProperties: false
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/SyncOperation" }
+    SyncOperationResult:
+      type: object
+      additionalProperties: false
+      required: [opId, outcome]
+      properties:
+        opId: { type: string, format: uuid }
+        outcome: { type: string, enum: [applied, conflict, rejected] }
+        record: { $ref: "#/components/schemas/ApplicationRecord" }
+        error: { $ref: "#/components/schemas/Error" }
+    SyncBatchResponse:
+      type: object
+      additionalProperties: false
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/SyncOperationResult" }

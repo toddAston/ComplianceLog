@@ -1,0 +1,28 @@
+# Build context is the repository root (server/Dockerfile). Keep the image small
+# and free of secrets, docs, research data, and the client's build artifacts.
+.git
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+.vscode
+.idea
+
+# Repo content the API image never needs.
+docs/
+research/
+data/
+reference/
+public/
+junitReportDirectory*
+*.md
+!server/package.json
+
+# Client-only build/config files (the server bundles only src/domain + src/application).
+index.html
+vite.config.ts
+eslint.config.js
+tsconfig.app.json
+tsconfig.node.json
+Scrath.excalidraw
