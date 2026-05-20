@@ -1,0 +1,235 @@
+import { Link } from "react-router-dom";
+import { useSession } from "../session/SessionContext";
+import { useAllApplicationRecords } from "../../db/queries";
+import { RoleToggle } from "../session/RoleToggle";
+
+export function DashboardPage() {
+  const { role, actor } = useSession();
+  const records = useAllApplicationRecords();
+
+  const draftCount = records.filter((r) => r.status === "draft").length;
+  const submittedCount = records.filter((r) => r.status === "submitted").length;
+  const lockedCount = records.filter((r) => r.status === "locked").length;
+  const pendingCount = records.filter((r) => r.status === "submitted" || r.status === "pending_review").length;
+
+  return (
+    <div style={{ maxWidth: 800, margin: "0 auto" }}>
+      {/* Welcome */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700 }}>
+            Welcome, {actor.actorName}! 👋
+          </h1>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 500,
+            padding: "2px 10px",
+            borderRadius: 9999,
+            backgroundColor: role === "manager" ? "#FCE4EC" : "#E3F2FD",
+            color: role === "manager" ? "#C2185B" : "#1976D2",
+          }}>
+            {role === "manager" ? "Manager" : "Applicator"}
+          </span>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <RoleToggle />
+        </div>
+      </div>
+
+      {/* Applicator Dashboard */}
+      {role === "contractor" && (
+        <>
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16, marginBottom: 32 }}>
+            <StatCard label="Drafts" value={draftCount} color="var(--color-text-secondary)" />
+            <StatCard label="Submitted" value={submittedCount} color="var(--color-primary)" />
+            <StatCard label="Locked" value={lockedCount} color="var(--color-success)" />
+          </div>
+
+          {/* Quick actions */}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 32 }}>
+            <Link to="/records/new" style={{ textDecoration: "none" }}>
+              <button style={{
+                height: 40,
+                padding: "0 16px",
+                backgroundColor: "var(--color-primary)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}>
+                + New Record
+              </button>
+            </Link>
+            <Link to="/records" style={{ textDecoration: "none" }}>
+              <button style={{
+                height: 40,
+                padding: "0 16px",
+                backgroundColor: "transparent",
+                color: "var(--color-primary)",
+                border: "1px solid var(--color-primary)",
+                borderRadius: 6,
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}>
+                View All Records
+              </button>
+            </Link>
+          </div>
+
+          {/* Recent records */}
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>Recent Records</h2>
+          {records.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {records.slice(0, 5).map((r) => (
+                <RecordCard key={r.id} record={r} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Manager Dashboard */}
+      {role === "manager" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
+            <StatCard label="Pending Review" value={pendingCount} color="var(--color-accent)" />
+            <StatCard label="Submitted This Week" value={submittedCount} color="var(--color-primary)" />
+            <StatCard label="Locked" value={lockedCount} color="var(--color-success)" />
+          </div>
+
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 32 }}>
+            <Link to="/reviews" style={{ textDecoration: "none" }}>
+              <button style={{
+                height: 40,
+                padding: "0 16px",
+                backgroundColor: "var(--color-primary)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}>
+                Review Records
+              </button>
+            </Link>
+            <Link to="/settings" style={{ textDecoration: "none" }}>
+              <button style={{
+                height: 40,
+                padding: "0 16px",
+                backgroundColor: "transparent",
+                color: "var(--color-primary)",
+                border: "1px solid var(--color-primary)",
+                borderRadius: 6,
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}>
+                Manage Farms
+              </button>
+            </Link>
+          </div>
+
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>Pending Reviews</h2>
+          {pendingCount === 0 ? (
+            <EmptyState message="No records pending review" />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {records.filter((r) => r.status === "submitted" || r.status === "pending_review").slice(0, 5).map((r) => (
+                <RecordCard key={r.id} record={r} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{
+      backgroundColor: "var(--color-surface)",
+      border: "1px solid var(--color-border)",
+      borderRadius: 8,
+      padding: 16,
+      boxShadow: "var(--shadow-card)",
+      borderLeft: `3px solid ${color}`,
+    }}>
+      <div style={{ fontSize: 28, fontWeight: 700, color, fontFamily: "'Courier New', monospace" }}>{value}</div>
+      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
+function RecordCard({ record }: { record: { id: string; status: string; dateApplied?: string; fieldId?: string } }) {
+  const statusColors: Record<string, { bg: string; text: string }> = {
+    draft: { bg: "#f5f5f5", text: "#646464" },
+    submitted: { bg: "#dbeafe", text: "#1e40af" },
+    pending_review: { bg: "#fef3c7", text: "#92400e" },
+    accepted: { bg: "#dcfce7", text: "#15803d" },
+    locked: { bg: "#dcfce7", text: "#15803d" },
+    needs_correction: { bg: "#fee2e2", text: "#991b1b" },
+  };
+  const colors = statusColors[record.status] || statusColors.draft;
+
+  return (
+    <div style={{
+      backgroundColor: "var(--color-surface)",
+      border: "1px solid var(--color-border)",
+      borderRadius: 8,
+      padding: 16,
+      boxShadow: "var(--shadow-card)",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      transition: "box-shadow 200ms ease-out",
+      cursor: "pointer",
+    }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text)" }}>
+          {record.dateApplied || "No date"}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
+          ID: {record.id.slice(0, 8)}...
+        </div>
+      </div>
+      <span style={{
+        fontSize: 11,
+        fontWeight: 500,
+        padding: "4px 10px",
+        borderRadius: 9999,
+        backgroundColor: colors.bg,
+        color: colors.text,
+        textTransform: "capitalize",
+      }}>
+        {record.status.replace("_", " ")}
+      </span>
+    </div>
+  );
+}
+
+function EmptyState({ message = "No records yet" }: { message?: string }) {
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 48,
+      textAlign: "center",
+    }}>
+      <div style={{ fontSize: 48, marginBottom: 16, color: "var(--color-border)" }}>📋</div>
+      <h3 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>{message}</h3>
+      <p style={{ fontSize: 14, color: "var(--color-text-secondary)", maxWidth: 400 }}>
+        Create your first application record to get started with compliance tracking.
+      </p>
+    </div>
+  );
+}
