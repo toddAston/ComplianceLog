@@ -6,9 +6,14 @@ export const fieldlogTheme = createTheme({
     primary: { main: "#2e7d32", contrastText: "#ffffff" },
     secondary: { main: "#1565c0" },
     background: { default: "#fafafa", paper: "#ffffff" },
-    error: { main: "#c62828" },
-    warning: { main: "#ef6c00" },
-    success: { main: "#2e7d32" },
+    error: { main: "#c62828", contrastText: "#ffffff" },
+    warning: { main: "#b15300", contrastText: "#ffffff" },
+    success: { main: "#2e7d32", contrastText: "#ffffff" },
+    text: {
+      primary: "#1a1a1a",
+      secondary: "#4a4a4a",
+      disabled: "#6b6b6b",
+    },
   },
   typography: {
     fontFamily:

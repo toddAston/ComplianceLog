@@ -1,3 +1,11 @@
+import Box from "@mui/material/Box";
+import Container from "@mui/material/Container";
+import Divider from "@mui/material/Divider";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemText from "@mui/material/ListItemText";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 import {
   useAllApplicationRecords,
   useAllApplicators,
@@ -22,87 +30,138 @@ function App() {
   const applicationRecords = useAllApplicationRecords();
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "1.5rem", maxWidth: 720, margin: "0 auto" }}>
-      <h1>FieldLog</h1>
-      <OfflineBadge />
-      <p style={{ color: "#555" }}>
-        Offline-first pesticide application recordkeeping. Contractor draft
-        capture, submit, and manager review/lock are wired.
-      </p>
+    <Container component="main" maxWidth="md" sx={{ py: 3 }}>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h4" component="h1" gutterBottom>
+            FieldLog
+          </Typography>
+          <OfflineBadge />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Offline-first pesticide application recordkeeping. Contractor draft
+            capture, submit, and manager review/lock are wired.
+          </Typography>
+        </Box>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>New application record (draft)</h2>
-        <DraftApplicationRecordForm />
-      </section>
+        <Box>
+          <Typography variant="h6" component="h2" gutterBottom>
+            New application record (draft)
+          </Typography>
+          <DraftApplicationRecordForm />
+        </Box>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Records ({applicationRecords.length})</h2>
-        <DraftsList />
-      </section>
+        <Box>
+          <Typography variant="h6" component="h2" gutterBottom>
+            Records ({applicationRecords.length})
+          </Typography>
+          <DraftsList />
+        </Box>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Manage farms</h2>
-        <FarmManager organizationId={DEMO_ORG_ID} />
-      </section>
+        <Box>
+          <Typography variant="h6" component="h2" gutterBottom>
+            Manage farms
+          </Typography>
+          <FarmManager organizationId={DEMO_ORG_ID} />
+        </Box>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Manage contractors</h2>
-        <ContractorManager organizationId={DEMO_ORG_ID} />
-      </section>
+        <Box>
+          <Typography variant="h6" component="h2" gutterBottom>
+            Manage contractors
+          </Typography>
+          <ContractorManager organizationId={DEMO_ORG_ID} />
+        </Box>
 
-      <section style={{ marginTop: "2rem", borderTop: "1px solid #eee", paddingTop: "1rem" }}>
-        <h2 style={{ color: "#555" }}>Seed debug</h2>
-        <p style={{ color: "#888", fontSize: "0.85rem" }}>
-          Read-only view of seeded reference data. Confirms IndexedDB persistence and Dexie reactivity.
-        </p>
+        <Divider />
 
-        <h3>Organizations ({organizations.length})</h3>
-        <ul>
-          {organizations.map((o) => (
-            <li key={o.id}>
-              {o.name} <code style={{ color: "#888" }}>({o.id})</code>
-            </li>
-          ))}
-        </ul>
+        <Box>
+          <Typography variant="h6" component="h2" color="text.primary">
+            Seed debug
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Read-only view of seeded reference data. Confirms IndexedDB
+            persistence and Dexie reactivity.
+          </Typography>
 
-        <h3>Farms ({farms.length})</h3>
-        <ul>
-          {farms.map((f) => (
-            <li key={f.id}>{f.name}</li>
-          ))}
-        </ul>
+          <Typography variant="subtitle2" component="h3" sx={{ mt: 1 }}>
+            Organizations ({organizations.length})
+          </Typography>
+          <List dense disablePadding>
+            {organizations.map((o) => (
+              <ListItem key={o.id} disableGutters disablePadding>
+                <ListItemText
+                  primary={o.name}
+                  secondary={o.id}
+                  slotProps={{
+                    primary: { color: "text.primary" },
+                    secondary: { color: "text.secondary" },
+                  }}
+                />
+              </ListItem>
+            ))}
+          </List>
 
-        <h3>Fields ({fields.length})</h3>
-        <ul>
-          {fields.map((f) => (
-            <li key={f.id}>
-              {f.name}
-              {f.defaultCropOrSite ? ` — ${f.defaultCropOrSite}` : ""}
-              {f.defaultAcres != null ? ` (${f.defaultAcres} ac)` : ""}
-            </li>
-          ))}
-        </ul>
+          <Typography variant="subtitle2" component="h3" sx={{ mt: 1 }}>
+            Farms ({farms.length})
+          </Typography>
+          <List dense disablePadding>
+            {farms.map((f) => (
+              <ListItem key={f.id} disableGutters disablePadding>
+                <ListItemText primary={f.name} />
+              </ListItem>
+            ))}
+          </List>
 
-        <h3>Applicators ({applicators.length})</h3>
-        <ul>
-          {applicators.map((a) => (
-            <li key={a.id}>
-              {a.applicatorName} — {a.contractorCompanyName}
-              {a.certificationNumber ? ` (cert #${a.certificationNumber})` : ""}
-            </li>
-          ))}
-        </ul>
+          <Typography variant="subtitle2" component="h3" sx={{ mt: 1 }}>
+            Fields ({fields.length})
+          </Typography>
+          <List dense disablePadding>
+            {fields.map((f) => (
+              <ListItem key={f.id} disableGutters disablePadding>
+                <ListItemText
+                  primary={
+                    f.name +
+                    (f.defaultCropOrSite ? ` — ${f.defaultCropOrSite}` : "") +
+                    (f.defaultAcres != null ? ` (${f.defaultAcres} ac)` : "")
+                  }
+                />
+              </ListItem>
+            ))}
+          </List>
 
-        <h3>Products ({products.length})</h3>
-        <ul>
-          {products.map((p) => (
-            <li key={p.id}>
-              {p.name} — EPA {p.epaRegistrationNumber} — RUP: {p.rupStatus}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+          <Typography variant="subtitle2" component="h3" sx={{ mt: 1 }}>
+            Applicators ({applicators.length})
+          </Typography>
+          <List dense disablePadding>
+            {applicators.map((a) => (
+              <ListItem key={a.id} disableGutters disablePadding>
+                <ListItemText
+                  primary={`${a.applicatorName} — ${a.contractorCompanyName}`}
+                  secondary={
+                    a.certificationNumber
+                      ? `cert #${a.certificationNumber}`
+                      : undefined
+                  }
+                />
+              </ListItem>
+            ))}
+          </List>
+
+          <Typography variant="subtitle2" component="h3" sx={{ mt: 1 }}>
+            Products ({products.length})
+          </Typography>
+          <List dense disablePadding>
+            {products.map((p) => (
+              <ListItem key={p.id} disableGutters disablePadding>
+                <ListItemText
+                  primary={`${p.name} — EPA ${p.epaRegistrationNumber}`}
+                  secondary={`RUP: ${p.rupStatus}`}
+                />
+              </ListItem>
+            ))}
+          </List>
+        </Box>
+      </Stack>
+    </Container>
   );
 }
 
