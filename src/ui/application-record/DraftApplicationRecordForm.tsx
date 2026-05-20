@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Alert from "@mui/material/Alert";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
@@ -12,6 +13,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import type { Product, RUPStatus } from "../../domain/types";
 import {
   useAllApplicators,
   useAllFarms,
@@ -65,6 +67,26 @@ const draftFormSchema = z.object({
 });
 
 type DraftFormValues = z.infer<typeof draftFormSchema>;
+
+function RupChip({ status }: { status: RUPStatus }) {
+  const color =
+    status === "yes" ? "error" : status === "no" ? "success" : "default";
+  const label =
+    status === "yes"
+      ? "RUP"
+      : status === "no"
+        ? "Non-RUP"
+        : "RUP: unknown";
+  return (
+    <Chip
+      size="small"
+      color={color}
+      label={label}
+      variant={status === "no" ? "outlined" : "filled"}
+      data-testid={`rup-chip-${status}`}
+    />
+  );
+}
 
 function SectionPaper({
   title,
@@ -164,6 +186,7 @@ export function DraftApplicationRecordForm({
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     setValue,
@@ -394,21 +417,92 @@ export function DraftApplicationRecordForm({
       </SectionPaper>
 
       <SectionPaper title="Product">
-        <TextField
-          select
-          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-          label="Product"
-          error={!!errors.productId}
-          helperText={errors.productId?.message}
-          {...register("productId")}
-        >
-          <option value="">— select —</option>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} — EPA {p.epaRegistrationNumber} — RUP: {p.rupStatus}
-            </option>
-          ))}
-        </TextField>
+        <Controller
+          name="productId"
+          control={control}
+          render={({ field }) => {
+            const selected =
+              products.find((p) => p.id === field.value) ?? null;
+            return (
+              <Stack spacing={1}>
+                <Autocomplete<Product>
+                  options={products}
+                  value={selected}
+                  onChange={(_e, value) => field.onChange(value?.id ?? "")}
+                  onBlur={field.onBlur}
+                  getOptionLabel={(p) =>
+                    `${p.name} (EPA ${p.epaRegistrationNumber})`
+                  }
+                  isOptionEqualToValue={(o, v) => o.id === v.id}
+                  filterOptions={(opts, state) => {
+                    const q = state.inputValue.trim().toLowerCase();
+                    if (!q) return opts;
+                    return opts.filter(
+                      (p) =>
+                        p.name.toLowerCase().includes(q) ||
+                        p.epaRegistrationNumber.toLowerCase().includes(q)
+                    );
+                  }}
+                  renderOption={(optionProps, p) => {
+                    const { key, ...rest } = optionProps as typeof optionProps & {
+                      key?: React.Key;
+                    };
+                    return (
+                      <Box
+                        component="li"
+                        key={key ?? p.id}
+                        {...rest}
+                        data-testid={`product-option-${p.id}`}
+                      >
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            width: "100%",
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="body2">{p.name}</Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              EPA {p.epaRegistrationNumber}
+                            </Typography>
+                          </Box>
+                          <RupChip status={p.rupStatus} />
+                        </Stack>
+                      </Box>
+                    );
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Product"
+                      error={!!errors.productId}
+                      helperText={errors.productId?.message}
+                    />
+                  )}
+                />
+                {selected && (
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ alignItems: "center", flexWrap: "wrap" }}
+                    data-testid="selected-product-summary"
+                  >
+                    <Typography variant="body2">
+                      EPA {selected.epaRegistrationNumber}
+                    </Typography>
+                    <RupChip status={selected.rupStatus} />
+                  </Stack>
+                )}
+              </Stack>
+            );
+          }}
+        />
         <Typography variant="caption" color="text.secondary">
           RUP status is captured as a fact at submit time. FieldLog does not
           decide whether you may legally apply a product.

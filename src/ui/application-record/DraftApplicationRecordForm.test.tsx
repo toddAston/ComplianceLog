@@ -49,6 +49,15 @@ afterEach(() => {
   cleanup();
 });
 
+async function pickProduct(user: ReturnType<typeof userEvent.setup>) {
+  const input = screen.getByLabelText("Product");
+  await user.click(input);
+  const option = await screen.findByTestId(
+    "product-option-product-example-herbicide-4l"
+  );
+  await user.click(option);
+}
+
 async function fillValidDraft() {
   const user = userEvent.setup();
 
@@ -66,10 +75,7 @@ async function fillValidDraft() {
   );
   await user.selectOptions(screen.getByLabelText("Farm"), "farm-north");
   await user.selectOptions(screen.getByLabelText("Field"), "field-7");
-  await user.selectOptions(
-    screen.getByLabelText("Product"),
-    "product-example-herbicide-4l"
-  );
+  await pickProduct(user);
 
   await user.type(screen.getByLabelText("Crop or site"), "Soybeans");
   await user.type(screen.getByLabelText("Acres treated"), "42.5");
@@ -106,8 +112,13 @@ describe("DraftApplicationRecordForm", () => {
     ).toBeTruthy();
     expect(screen.getByRole("option", { name: "North Farm" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Field 7" })).toBeTruthy();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("Product"));
     expect(
-      screen.getByRole("option", { name: /Example Herbicide 4L/ })
+      await screen.findByTestId(
+        "product-option-product-example-herbicide-4l"
+      )
     ).toBeTruthy();
   });
 
@@ -245,10 +256,7 @@ describe("DraftApplicationRecordForm weather capture", () => {
     );
     await user.selectOptions(screen.getByLabelText("Farm"), "farm-north");
     await user.selectOptions(screen.getByLabelText("Field"), "field-7");
-    await user.selectOptions(
-      screen.getByLabelText("Product"),
-      "product-example-herbicide-4l"
-    );
+    await pickProduct(user);
     await user.type(screen.getByLabelText("Crop or site"), "Soybeans");
     await user.type(screen.getByLabelText("Acres treated"), "42.5");
     await user.type(screen.getByLabelText("Application date"), "2026-05-19");
@@ -338,10 +346,7 @@ describe("DraftApplicationRecordForm weather capture", () => {
     );
     await user.selectOptions(screen.getByLabelText("Farm"), "farm-north");
     await user.selectOptions(screen.getByLabelText("Field"), "field-7");
-    await user.selectOptions(
-      screen.getByLabelText("Product"),
-      "product-example-herbicide-4l"
-    );
+    await pickProduct(user);
     await user.type(screen.getByLabelText("Crop or site"), "Soybeans");
     await user.type(screen.getByLabelText("Acres treated"), "42.5");
     await user.type(screen.getByLabelText("Application date"), "2026-05-19");
@@ -401,5 +406,100 @@ describe("App + DraftApplicationRecordForm integration", () => {
     ).toBeTruthy();
     expect(await screen.findByText("draft")).toBeTruthy();
     expect(await screen.findByText("local_only")).toBeTruthy();
+  });
+});
+
+describe("DraftApplicationRecordForm Product Autocomplete", () => {
+  async function seedSecondProduct() {
+    await db.products.put({
+      id: "product-roundup-powermax",
+      catalogVersion: "MO-DEMO-2026-05-19",
+      name: "Roundup PowerMAX 3",
+      epaRegistrationNumber: "524-475",
+      rupStatus: "no",
+      createdAt: "2026-05-19T00:00:00.000Z",
+    });
+  }
+
+  it("renders an RUP chip beside each option in the dropdown", async () => {
+    await seedSecondProduct();
+    const user = userEvent.setup();
+    render(<DraftApplicationRecordForm />);
+
+    await user.click(await screen.findByLabelText("Product"));
+
+    const yesOption = await screen.findByTestId(
+      "product-option-product-example-herbicide-4l"
+    );
+    expect(yesOption.textContent).toMatch(/RUP/);
+
+    const noOption = await screen.findByTestId(
+      "product-option-product-roundup-powermax"
+    );
+    expect(noOption.textContent).toMatch(/Non-RUP/);
+  });
+
+  it("filters options by typed substring of the product name", async () => {
+    await seedSecondProduct();
+    const user = userEvent.setup();
+    render(<DraftApplicationRecordForm />);
+
+    const input = await screen.findByLabelText("Product");
+    await user.click(input);
+    await user.type(input, "Roundup");
+
+    expect(
+      await screen.findByTestId("product-option-product-roundup-powermax")
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("product-option-product-example-herbicide-4l")
+    ).toBeNull();
+  });
+
+  it("filters options by EPA registration number substring", async () => {
+    await seedSecondProduct();
+    const user = userEvent.setup();
+    render(<DraftApplicationRecordForm />);
+
+    const input = await screen.findByLabelText("Product");
+    await user.click(input);
+    await user.type(input, "524-475");
+
+    expect(
+      await screen.findByTestId("product-option-product-roundup-powermax")
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("product-option-product-example-herbicide-4l")
+    ).toBeNull();
+  });
+
+  it("shows the selected product's RUP chip below the input after selection", async () => {
+    await seedSecondProduct();
+    const user = userEvent.setup();
+    render(<DraftApplicationRecordForm />);
+
+    await user.click(await screen.findByLabelText("Product"));
+    await user.click(
+      await screen.findByTestId("product-option-product-example-herbicide-4l")
+    );
+
+    const summary = await screen.findByTestId("selected-product-summary");
+    expect(summary.textContent).toMatch(/12345-678/);
+    expect(summary.querySelector('[data-testid="rup-chip-yes"]')).toBeTruthy();
+  });
+
+  it("renders no selected-product summary when nothing is picked", async () => {
+    render(<DraftApplicationRecordForm />);
+    await screen.findByLabelText("Product");
+    expect(screen.queryByTestId("selected-product-summary")).toBeNull();
+  });
+
+  it("surfaces the validation error when the form is submitted with no product", async () => {
+    const user = userEvent.setup();
+    render(<DraftApplicationRecordForm />);
+
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
+
+    expect(await screen.findByText(/Product is required/i)).toBeTruthy();
   });
 });
