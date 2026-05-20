@@ -1,10 +1,38 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      strategies: 'generateSW',
+      registerType: 'prompt',
+      injectRegister: false,
+      manifest: false,
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+        cleanupOutdatedCaches: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'fieldlog-html',
+              networkTimeoutSeconds: 3,
+            },
+          },
+        ],
+      },
+      devOptions: {
+        enabled: false,
+      },
+    }),
+  ],
   // Scope dep pre-scan to our entry HTML so it does not walk into
   // reference/vendor-docs/ (cloned upstream repos contain ~100 playground
   // index.html files and test-fixture packages that fail to resolve here).

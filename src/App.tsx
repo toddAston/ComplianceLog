@@ -8,6 +8,7 @@ import {
 } from "./db/queries";
 import { DraftApplicationRecordForm } from "./ui/application-record/DraftApplicationRecordForm";
 import { DraftsList } from "./ui/application-record/DraftsList";
+import { OfflineBadge } from "./ui/system/OfflineBadge";
 
 function App() {
   const organizations = useAllOrganizations();
@@ -20,6 +21,7 @@ function App() {
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "1.5rem", maxWidth: 720, margin: "0 auto" }}>
       <h1>FieldLog</h1>
+      <OfflineBadge />
       <p style={{ color: "#555" }}>
         Offline-first pesticide application recordkeeping. Contractor draft
         capture, submit, and manager review/lock are wired.
