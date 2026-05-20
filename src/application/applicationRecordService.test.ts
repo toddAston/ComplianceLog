@@ -484,6 +484,18 @@ describe("submitApplicationRecord — compliance integration", () => {
     const checkEvent = events.find((e) => e.type === "compliance_check_run");
     expect(checkEvent).toBeDefined();
     expect((checkEvent!.metadata as any).results.length).toBeGreaterThan(0);
+    const outcomes = (checkEvent!.metadata as any).outcomes as Array<{
+      ruleId: string;
+      status: "pass" | "fail" | "unknown";
+      description: string;
+    }>;
+    expect(outcomes).toBeDefined();
+    expect(outcomes.length).toBe(4);
+    expect(outcomes.every((o) => typeof o.status === "string")).toBe(true);
+    expect(outcomes.some((o) => o.status === "fail")).toBe(true);
+    expect(outcomes.some((o) => o.status === "pass")).toBe(true);
+    expect((checkEvent!.metadata as any).phase).toBe("submit");
+    expect(checkEvent!.message).toMatch(/\d+ pass, \d+ fail, \d+ unknown/);
   });
 });
 

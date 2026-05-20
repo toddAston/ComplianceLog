@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -653,5 +653,78 @@ describe("DraftsList request-correction affordance", () => {
     expect(
       within(row).queryByRole("button", { name: /view export/i })
     ).toBeNull();
+  });
+});
+
+describe("DraftsList 3-day submission window chip", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function seedDraftWithAppDate(applicationDate: string) {
+    return createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs({ applicationDate }),
+      },
+      TEST_APPLICATOR
+    );
+  }
+
+  function freezeRenderingNow(date: Date) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(date);
+  }
+
+  it("does NOT render a window chip when the draft still has more than 1 day to spare", async () => {
+    // applicationDate today → daysLeft=3 (status "ok") → no chip surfaces.
+    const draft = await seedDraftWithAppDate("2026-05-20");
+    freezeRenderingNow(new Date(2026, 4, 20, 12, 0, 0));
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${draft.id}`);
+    expect(screen.queryByTestId(`draft-window-${draft.id}`)).toBeNull();
+  });
+
+  it("shows a 'Submit today' warning chip when the 3-day window closes today", async () => {
+    const draft = await seedDraftWithAppDate("2026-05-17");
+    freezeRenderingNow(new Date(2026, 4, 20, 12, 0, 0));
+    render(<DraftsList />);
+
+    const chip = await screen.findByTestId(`draft-window-${draft.id}`);
+    expect(chip.textContent).toBe("Submit today");
+    const chipRoot = chip.closest(".MuiChip-root");
+    expect(chipRoot?.className).toMatch(/colorWarning/);
+  });
+
+  it("shows '1 day left to submit' when exactly one calendar day remains", async () => {
+    const draft = await seedDraftWithAppDate("2026-05-18");
+    freezeRenderingNow(new Date(2026, 4, 20, 12, 0, 0));
+    render(<DraftsList />);
+
+    const chip = await screen.findByTestId(`draft-window-${draft.id}`);
+    expect(chip.textContent).toBe("1 day left to submit");
+  });
+
+  it("shows an error-colored overdue chip when the deadline has already passed", async () => {
+    const draft = await seedDraftWithAppDate("2026-05-10");
+    freezeRenderingNow(new Date(2026, 4, 20, 12, 0, 0));
+    render(<DraftsList />);
+
+    const chip = await screen.findByTestId(`draft-window-${draft.id}`);
+    expect(chip.textContent).toMatch(/Late — overdue by 7 days/);
+    const chipRoot = chip.closest(".MuiChip-root");
+    expect(chipRoot?.className).toMatch(/colorError/);
+  });
+
+  it("never renders the window chip on non-draft rows even when the application date is stale", async () => {
+    // Seed a record, submit it (so it leaves draft), then freeze "now" deep
+    // past the 3-day window — the chip is only for drafts in flight.
+    const submitted = await seedPendingReviewRecord();
+    freezeRenderingNow(new Date(2026, 5, 30, 12, 0, 0));
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${submitted.id}`);
+    expect(screen.queryByTestId(`draft-window-${submitted.id}`)).toBeNull();
   });
 });

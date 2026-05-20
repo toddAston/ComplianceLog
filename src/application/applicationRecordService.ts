@@ -7,7 +7,16 @@ import type {
   Product,
   ProductSnapshot,
 } from "../domain/types";
-import { runComplianceChecks } from "./complianceRules";
+import {
+  runAllComplianceChecks,
+  type ComplianceCheckOutcome,
+} from "./complianceRules";
+
+function summarizeOutcomes(outcomes: ComplianceCheckOutcome[]): string {
+  const counts = { pass: 0, fail: 0, unknown: 0 };
+  for (const o of outcomes) counts[o.status] += 1;
+  return `${counts.pass} pass, ${counts.fail} fail, ${counts.unknown} unknown`;
+}
 
 export type ActorContext = {
   userId: string;
@@ -90,7 +99,10 @@ export async function submitApplicationRecord(
     throw new Error("Attestation must be confirmed before submission.");
   }
 
-  const complianceResults = runComplianceChecks(record);
+  const complianceOutcomes = runAllComplianceChecks(record);
+  const complianceResults = complianceOutcomes.filter(
+    (o) => o.status === "fail"
+  );
   const blocked = complianceResults.filter((r) => r.severity === "blocked");
   if (blocked.length > 0) {
     throw new Error(blocked[0].message);
@@ -139,8 +151,12 @@ export async function submitApplicationRecord(
       actorUserId: actor.userId,
       actorDisplayName: actor.displayName,
       occurredAt: submittedAt,
-      message: `Compliance checks run at submit: ${complianceResults.length} issue(s) found.`,
-      metadata: { results: complianceResults },
+      message: `Compliance checks at submit — ${summarizeOutcomes(complianceOutcomes)}.`,
+      metadata: {
+        phase: "submit",
+        outcomes: complianceOutcomes,
+        results: complianceResults,
+      },
     },
     {
       id: id(),
@@ -369,7 +385,10 @@ export async function resubmitCorrectedApplicationRecord(
     contractorInputs: mergedInputs,
   };
 
-  const complianceResults = runComplianceChecks(candidateRecord);
+  const complianceOutcomes = runAllComplianceChecks(candidateRecord);
+  const complianceResults = complianceOutcomes.filter(
+    (o) => o.status === "fail"
+  );
   const blocked = complianceResults.filter((r) => r.severity === "blocked");
   if (blocked.length > 0) {
     throw new Error(blocked[0].message);
@@ -409,8 +428,12 @@ export async function resubmitCorrectedApplicationRecord(
       actorUserId: actor.userId,
       actorDisplayName: actor.displayName,
       occurredAt: resubmittedAt,
-      message: `Compliance checks run at resubmit: ${complianceResults.length} issue(s) found.`,
-      metadata: { results: complianceResults },
+      message: `Compliance checks at resubmit — ${summarizeOutcomes(complianceOutcomes)}.`,
+      metadata: {
+        phase: "resubmit",
+        outcomes: complianceOutcomes,
+        results: complianceResults,
+      },
     },
   ];
 
@@ -425,6 +448,57 @@ export async function resubmitCorrectedApplicationRecord(
   );
 
   return updatedRecord;
+}
+
+/**
+ * Dev/demo helper: walks every record whose syncStatus is "queued" through
+ * syncing → synced, appending a single "synced" record event per record.
+ *
+ * This is not a real sync — it never talks to a server. It exists so the UI
+ * can demonstrate the offline → synced transition without backend wiring.
+ */
+export async function simulateSyncAllQueued(
+  actor: ActorContext
+): Promise<{ syncedRecordIds: string[] }> {
+  const queued = await db.applicationRecords
+    .where("syncStatus")
+    .equals("queued")
+    .toArray();
+  const syncedAt = now();
+  const syncedRecordIds: string[] = [];
+
+  await db.transaction(
+    "rw",
+    db.applicationRecords,
+    db.recordEvents,
+    async () => {
+      for (const record of queued) {
+        await db.applicationRecords.put({
+          ...record,
+          syncStatus: "synced",
+          system: {
+            ...record.system,
+            lastUpdatedAt: syncedAt,
+          },
+        });
+        await db.recordEvents.add({
+          id: id(),
+          applicationRecordId: record.id,
+          // Reuse "updated" since the simulated sync is not a domain
+          // transition with its own dedicated event type yet.
+          type: "updated",
+          actorUserId: actor.userId,
+          actorDisplayName: actor.displayName,
+          occurredAt: syncedAt,
+          message: "Sync simulated: queued → synced.",
+          metadata: { syncStatusBefore: "queued", syncStatusAfter: "synced" },
+        });
+        syncedRecordIds.push(record.id);
+      }
+    }
+  );
+
+  return { syncedRecordIds };
 }
 
 export function productToContractorProductFields(product: Product) {

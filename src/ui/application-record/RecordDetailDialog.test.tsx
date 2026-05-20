@@ -178,6 +178,94 @@ describe("RecordDetailDialog audit timeline", () => {
     expect(within(list).getAllByText(/^locked$/i).length).toBeGreaterThan(0);
   });
 
+  it("expands compliance_check_run events into per-rule pass/fail/unknown outcomes", async () => {
+    // Submit with target pest empty + RUP unknown so we get a mix of pass/fail/unknown statuses.
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs({
+          targetPest: "",
+        }),
+      },
+      APPLICATOR
+    );
+    const submitted = await submitApplicationRecord(draft.id, APPLICATOR);
+    const reloaded = await db.applicationRecords.get(submitted.id);
+    render(
+      <RecordDetailDialog record={reloaded!} onClose={() => undefined} />
+    );
+
+    const events = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(submitted.id)
+      .toArray();
+    const checkEvent = events.find((e) => e.type === "compliance_check_run");
+    expect(checkEvent).toBeTruthy();
+
+    const block = await screen.findByTestId(
+      `audit-event-compliance-${checkEvent!.id}`
+    );
+    // Each of the 4 rules is enumerated explicitly.
+    const ruleIds = [
+      "MISSING_WIND",
+      "MISSING_TARGET_PEST",
+      "RECORD_LATE",
+      "RUP_UNCERTIFIED",
+    ];
+    for (const rid of ruleIds) {
+      expect(
+        within(block).getByTestId(
+          `audit-compliance-${checkEvent!.id}-${rid}`
+        )
+      ).toBeTruthy();
+    }
+    // Target pest is missing so MISSING_TARGET_PEST must be marked FAIL.
+    const failStatus = within(block).getByTestId(
+      `audit-compliance-status-${checkEvent!.id}-MISSING_TARGET_PEST`
+    );
+    expect(failStatus.getAttribute("aria-label")).toBe("FAIL");
+    // Wind is present so MISSING_WIND must be PASS.
+    const windStatus = within(block).getByTestId(
+      `audit-compliance-status-${checkEvent!.id}-MISSING_WIND`
+    );
+    expect(windStatus.getAttribute("aria-label")).toBe("PASS");
+  });
+
+  it("does not show the locked banner on a still-pending record", async () => {
+    const submitted = await seedSubmittedRecord();
+    const reloaded = await db.applicationRecords.get(submitted.id);
+    render(
+      <RecordDetailDialog record={reloaded!} onClose={() => undefined} />
+    );
+    expect(screen.queryByTestId("locked-banner")).toBeNull();
+  });
+
+  it("renders a prominent locked banner with timestamp + actor + review notes when locked", async () => {
+    const submitted = await seedSubmittedRecord();
+    await acceptAndLockApplicationRecord(
+      submitted.id,
+      MANAGER,
+      "Looks good — approved."
+    );
+    const reloaded = await db.applicationRecords.get(submitted.id);
+    render(
+      <RecordDetailDialog record={reloaded!} onClose={() => undefined} />
+    );
+
+    const banner = await screen.findByTestId("locked-banner");
+    expect(banner).toBeTruthy();
+    expect(within(banner).getByText(/Locked — record is immutable/i)).toBeTruthy();
+    expect(
+      within(banner).getByTestId("locked-banner-by").textContent
+    ).toBe("Test Manager");
+    expect(
+      within(banner).getByTestId("locked-banner-notes").textContent
+    ).toBe("Looks good — approved.");
+    expect(
+      within(banner).getByTestId("locked-banner-at").textContent
+    ).toBeTruthy();
+  });
+
   it("attributes each event to the actor that produced it", async () => {
     const submitted = await seedSubmittedRecord();
     await acceptAndLockApplicationRecord(submitted.id, MANAGER);

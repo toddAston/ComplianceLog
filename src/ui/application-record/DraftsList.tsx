@@ -19,6 +19,7 @@ import {
   type LockedApplicationRecordExport,
 } from "../../application/applicationRecordExport";
 import { runComplianceChecks } from "../../application/complianceRules";
+import { computeDraftSubmissionWindow } from "../../application/draftSubmissionWindow";
 import type { ApplicationRecord } from "../../domain/types";
 import { DEMO_APPLICATOR_ACTOR, DEMO_MANAGER_ACTOR } from "../demoSession";
 import { useSessionRole } from "../session/SessionContext";
@@ -214,6 +215,16 @@ export function DraftsList() {
           const warningCount = complianceResults.filter(
             (c) => c.severity === "warning" || c.severity === "error"
           ).length;
+          const submissionWindow = isDraft
+            ? computeDraftSubmissionWindow(
+                r.contractorInputs.applicationDate,
+                new Date()
+              )
+            : null;
+          const showSubmissionWindowChip =
+            submissionWindow !== null && submissionWindow.status !== "ok";
+          const submissionChipColor: WorkflowChipColor =
+            submissionWindow?.severity === "error" ? "error" : "warning";
 
           return (
             <Box component="li" key={r.id} sx={{ listStyle: "none" }}>
@@ -260,6 +271,23 @@ export function DraftsList() {
                         color="warning"
                         label={`⚠ ${warningCount}`}
                         title={`${warningCount} compliance issue(s)`}
+                      />
+                    )}
+                    {showSubmissionWindowChip && submissionWindow && (
+                      <Chip
+                        size="small"
+                        color={submissionChipColor}
+                        variant={
+                          submissionWindow.status === "overdue"
+                            ? "filled"
+                            : "outlined"
+                        }
+                        label={
+                          <span data-testid={`draft-window-${r.id}`}>
+                            {submissionWindow.label}
+                          </span>
+                        }
+                        title="2 CSR 70-25.120(1) — records must be completed within 3 days of application."
                       />
                     )}
                     <Button

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { runComplianceChecks } from "./complianceRules";
+import {
+  runAllComplianceChecks,
+  runComplianceChecks,
+} from "./complianceRules";
 import type { ApplicationRecord } from "../domain/types";
 
 function makeRecord(
@@ -163,5 +166,85 @@ describe("complianceRules", () => {
   it("returns empty array for a fully compliant record", () => {
     const results = runComplianceChecks(makeRecord());
     expect(results).toEqual([]);
+  });
+});
+
+describe("runAllComplianceChecks", () => {
+  it("returns one outcome per rule with description + citation", () => {
+    const outcomes = runAllComplianceChecks(makeRecord());
+    expect(outcomes.map((o) => o.ruleId).sort()).toEqual([
+      "MISSING_TARGET_PEST",
+      "MISSING_WIND",
+      "RECORD_LATE",
+      "RUP_UNCERTIFIED",
+    ]);
+    for (const o of outcomes) {
+      expect(o.description.length).toBeGreaterThan(0);
+      expect(o.citationShort.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("marks all rules pass for a fully compliant record", () => {
+    const outcomes = runAllComplianceChecks(makeRecord());
+    expect(outcomes.every((o) => o.status === "pass")).toBe(true);
+  });
+
+  it("marks MISSING_WIND as fail when wind speed is empty", () => {
+    const outcomes = runAllComplianceChecks(makeRecord({ windSpeed: "" }));
+    const wind = outcomes.find((o) => o.ruleId === "MISSING_WIND");
+    expect(wind?.status).toBe("fail");
+  });
+
+  it("marks RECORD_LATE as unknown when application date is missing", () => {
+    const outcomes = runAllComplianceChecks(
+      makeRecord({ applicationDate: "" })
+    );
+    const late = outcomes.find((o) => o.ruleId === "RECORD_LATE");
+    expect(late?.status).toBe("unknown");
+    expect(late?.unknownReason).toBeDefined();
+  });
+
+  it("marks RECORD_LATE as unknown when application date is unparseable", () => {
+    const outcomes = runAllComplianceChecks(
+      makeRecord({ applicationDate: "not-a-date" })
+    );
+    const late = outcomes.find((o) => o.ruleId === "RECORD_LATE");
+    expect(late?.status).toBe("unknown");
+  });
+
+  it("marks RUP_UNCERTIFIED as unknown when rupStatus is unknown", () => {
+    const outcomes = runAllComplianceChecks(
+      makeRecord({ rupStatus: "unknown", certificationNumber: "" })
+    );
+    const rup = outcomes.find((o) => o.ruleId === "RUP_UNCERTIFIED");
+    expect(rup?.status).toBe("unknown");
+  });
+
+  it("marks RUP_UNCERTIFIED as pass when product is not RUP even without cert", () => {
+    const outcomes = runAllComplianceChecks(
+      makeRecord({ rupStatus: "no", certificationNumber: "" })
+    );
+    const rup = outcomes.find((o) => o.ruleId === "RUP_UNCERTIFIED");
+    expect(rup?.status).toBe("pass");
+  });
+
+  it("marks RUP_UNCERTIFIED as fail when RUP and no cert", () => {
+    const outcomes = runAllComplianceChecks(
+      makeRecord({ rupStatus: "yes", certificationNumber: "" })
+    );
+    const rup = outcomes.find((o) => o.ruleId === "RUP_UNCERTIFIED");
+    expect(rup?.status).toBe("fail");
+  });
+
+  it("runComplianceChecks remains aligned with runAllComplianceChecks failures", () => {
+    const record = makeRecord({ windSpeed: "", targetPest: "" });
+    const failedIds = runAllComplianceChecks(record)
+      .filter((o) => o.status === "fail")
+      .map((o) => o.ruleId)
+      .sort();
+    const flagged = runComplianceChecks(record)
+      .map((r) => r.ruleId)
+      .sort();
+    expect(flagged).toEqual(failedIds);
   });
 });

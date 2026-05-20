@@ -26,6 +26,7 @@ import {
 } from "./ui/session/SessionContext";
 import { RoleToggle } from "./ui/session/RoleToggle";
 import { DEMO_ORG_ID } from "./db/seed";
+import { SimulateSyncButton } from "./ui/system/SimulateSyncButton";
 
 function AppShell() {
   const role = useSessionRole();
@@ -55,7 +56,10 @@ function AppShell() {
             </Typography>
             <RoleToggle />
           </Stack>
-          <OfflineBadge />
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+            <OfflineBadge />
+            <SimulateSyncButton />
+          </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             Offline-first pesticide application recordkeeping. Switch the demo
             role to see the contractor or manager view.

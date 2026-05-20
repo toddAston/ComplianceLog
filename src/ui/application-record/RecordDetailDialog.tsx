@@ -1,4 +1,6 @@
 import { useState } from "react";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -17,6 +19,7 @@ import type {
 import { useRecordEvents } from "../../db/queries";
 import {
   runComplianceChecks,
+  type ComplianceCheckOutcome,
   type ComplianceCheckResult,
 } from "../../application/complianceRules";
 import { resubmitCorrectedApplicationRecord } from "../../application/applicationRecordService";
@@ -72,6 +75,40 @@ const severityIcon: Record<string, string> = {
   error: "✗",
   warning: "⚠",
 };
+
+const statusIcon: Record<ComplianceCheckOutcome["status"], string> = {
+  pass: "✓",
+  fail: "✗",
+  unknown: "?",
+};
+
+const statusColor: Record<ComplianceCheckOutcome["status"], string> = {
+  pass: "#2e7d32",
+  fail: "#b00020",
+  unknown: "#6d4c00",
+};
+
+const statusLabel: Record<ComplianceCheckOutcome["status"], string> = {
+  pass: "PASS",
+  fail: "FAIL",
+  unknown: "UNKNOWN",
+};
+
+function isComplianceOutcomeArray(
+  value: unknown
+): value is ComplianceCheckOutcome[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        "ruleId" in entry &&
+        "status" in entry &&
+        "description" in entry
+    )
+  );
+}
 
 export function RecordDetailDialog({ record, onClose }: Props) {
   const events = useRecordEvents(record?.id ?? null);
@@ -145,6 +182,46 @@ export function RecordDetailDialog({ record, onClose }: Props) {
         </DialogTitle>
 
         <DialogContent dividers>
+          {isLocked && (
+            <Alert
+              severity="success"
+              variant="outlined"
+              sx={{ mb: 2 }}
+              icon={<span aria-hidden>🔒</span>}
+              data-testid="locked-banner"
+            >
+              <AlertTitle sx={{ fontWeight: 700 }}>
+                Locked — record is immutable
+              </AlertTitle>
+              <Stack spacing={0.25}>
+                {record.system.lockedAt && (
+                  <Typography variant="body2">
+                    <strong>Locked at:</strong>{" "}
+                    <span data-testid="locked-banner-at">
+                      {new Date(record.system.lockedAt).toLocaleString()}
+                    </span>
+                  </Typography>
+                )}
+                {record.managerInputs.reviewedBy && (
+                  <Typography variant="body2">
+                    <strong>Locked by:</strong>{" "}
+                    <span data-testid="locked-banner-by">
+                      {record.managerInputs.reviewedBy}
+                    </span>
+                  </Typography>
+                )}
+                {record.managerInputs.reviewNotes && (
+                  <Typography variant="body2">
+                    <strong>Review notes:</strong>{" "}
+                    <span data-testid="locked-banner-notes">
+                      {record.managerInputs.reviewNotes}
+                    </span>
+                  </Typography>
+                )}
+              </Stack>
+            </Alert>
+          )}
+
           {/* Compliance Checks */}
           <section>
             <h3 style={{ margin: "0 0 0.5rem" }}>Compliance Checks</h3>
@@ -278,6 +355,88 @@ export function RecordDetailDialog({ record, onClose }: Props) {
                         {evt.message}
                       </Typography>
                     )}
+                    {evt.type === "compliance_check_run" &&
+                      isComplianceOutcomeArray(evt.metadata?.outcomes) && (
+                        <Box
+                          component="ul"
+                          sx={{
+                            listStyle: "none",
+                            p: 0,
+                            m: 0,
+                            mt: 0.5,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 0.25,
+                          }}
+                          data-testid={`audit-event-compliance-${evt.id}`}
+                        >
+                          {(evt.metadata.outcomes as ComplianceCheckOutcome[]).map(
+                            (outcome) => (
+                              <Box
+                                component="li"
+                                key={outcome.ruleId}
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  gap: 0.75,
+                                  fontSize: "0.85rem",
+                                  lineHeight: 1.35,
+                                }}
+                                data-testid={`audit-compliance-${evt.id}-${outcome.ruleId}`}
+                              >
+                                <Typography
+                                  component="span"
+                                  sx={{
+                                    fontWeight: 700,
+                                    color: statusColor[outcome.status],
+                                    minWidth: "1.25rem",
+                                  }}
+                                  aria-label={statusLabel[outcome.status]}
+                                  data-testid={`audit-compliance-status-${evt.id}-${outcome.ruleId}`}
+                                >
+                                  {statusIcon[outcome.status]}
+                                </Typography>
+                                <Box sx={{ flex: 1 }}>
+                                  <Typography
+                                    component="span"
+                                    variant="body2"
+                                    sx={{ color: statusColor[outcome.status] }}
+                                  >
+                                    <strong>{statusLabel[outcome.status]}</strong>{" "}
+                                    — {outcome.description}
+                                  </Typography>{" "}
+                                  <Typography
+                                    component="span"
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    [{outcome.citationShort}]
+                                  </Typography>
+                                  {outcome.status === "fail" && (
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: "block" }}
+                                    >
+                                      {outcome.message}
+                                    </Typography>
+                                  )}
+                                  {outcome.status === "unknown" &&
+                                    outcome.unknownReason && (
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{ display: "block" }}
+                                      >
+                                        {outcome.unknownReason}
+                                      </Typography>
+                                    )}
+                                </Box>
+                              </Box>
+                            )
+                          )}
+                        </Box>
+                      )}
                   </Box>
                 ))}
               </Stack>

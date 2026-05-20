@@ -146,7 +146,10 @@ describe("ReviewQueue", () => {
 
     renderWithManagerSession();
 
-    const queue = await screen.findByTestId("review-queue");
+    await screen.findByTestId(`queue-row-${older.id}`);
+    await screen.findByTestId(`queue-row-${newer.id}`);
+
+    const queue = screen.getByTestId("review-queue");
     const rows = within(queue).getAllByText(/Field/i);
     const olderIndex = rows.findIndex((n) => n.textContent?.includes("Older"));
     const newerIndex = rows.findIndex((n) => n.textContent?.includes("Newer"));
@@ -157,7 +160,7 @@ describe("ReviewQueue", () => {
     expect(older.id).not.toBe(newer.id);
   });
 
-  it("locks a pending record via the row's Lock button using the manager session actor", async () => {
+  it("locks a pending record via the row's Lock button after confirming", async () => {
     const user = userEvent.setup();
     const submitted = await seedPendingReview();
 
@@ -165,6 +168,14 @@ describe("ReviewQueue", () => {
 
     const lockBtn = await screen.findByTestId(`queue-lock-${submitted.id}`);
     await user.click(lockBtn);
+
+    // The row's Lock button now only opens the confirm dialog —
+    // the record must NOT yet be locked until the manager confirms.
+    let beforeConfirm = await db.applicationRecords.get(submitted.id);
+    expect(beforeConfirm?.workflowStatus).not.toBe("locked");
+
+    const confirmBtn = await screen.findByTestId("lock-confirm-accept");
+    await user.click(confirmBtn);
 
     await waitFor(async () => {
       const after = await db.applicationRecords.get(submitted.id);
@@ -177,6 +188,54 @@ describe("ReviewQueue", () => {
       .toArray();
     const lockedEvent = events.find((e) => e.type === "locked");
     expect(lockedEvent?.actorDisplayName).toBe("Demo Manager");
+  });
+
+  it("opens the lock confirm dialog with record context when Lock is clicked", async () => {
+    const user = userEvent.setup();
+    const submitted = await seedPendingReview();
+    renderWithManagerSession();
+
+    await user.click(await screen.findByTestId(`queue-lock-${submitted.id}`));
+
+    const dialog = await screen.findByTestId("lock-confirm-dialog");
+    expect(
+      within(dialog).getByText(/permanently freezes the record/i)
+    ).toBeTruthy();
+    expect(within(dialog).getByText(/Field 7/)).toBeTruthy();
+  });
+
+  it("cancels the lock and leaves the record untouched", async () => {
+    const user = userEvent.setup();
+    const submitted = await seedPendingReview();
+    renderWithManagerSession();
+
+    await user.click(await screen.findByTestId(`queue-lock-${submitted.id}`));
+    await user.click(await screen.findByTestId("lock-confirm-cancel"));
+
+    // Dialog closes
+    await waitFor(() => {
+      expect(screen.queryByTestId("lock-confirm-dialog")).toBeNull();
+    });
+    const after = await db.applicationRecords.get(submitted.id);
+    expect(after?.workflowStatus).not.toBe("locked");
+  });
+
+  it("includes the review note in the lock confirm dialog when one was entered", async () => {
+    const user = userEvent.setup();
+    const submitted = await seedPendingReview();
+    renderWithManagerSession();
+
+    const row = await screen.findByTestId(`queue-row-${submitted.id}`);
+    await user.type(
+      within(row).getByLabelText(/review notes/i),
+      "All good — proceed."
+    );
+    await user.click(await screen.findByTestId(`queue-lock-${submitted.id}`));
+
+    const dialog = await screen.findByTestId("lock-confirm-dialog");
+    expect(
+      within(dialog).getByText(/All good — proceed\./)
+    ).toBeTruthy();
   });
 
   it("requests correction with notes and clears the input after success", async () => {
@@ -231,6 +290,74 @@ describe("ReviewQueue", () => {
       within(row).queryByRole("button", { name: /request correction/i })
     ).toBeNull();
     expect(within(row).getByText(/Waiting on contractor/i)).toBeTruthy();
+  });
+
+  it("shows pending and needs_correction counts in the header", async () => {
+    const a = await seedPendingReview({ fieldName: "Alpha" });
+    const b = await seedPendingReview({ fieldName: "Beta" });
+    await requestCorrectionForApplicationRecord(
+      b.id,
+      { userId: "u-mgr", displayName: "Mgr" },
+      "fix it"
+    );
+    void a;
+
+    renderWithManagerSession();
+
+    await screen.findByTestId(`queue-row-${a.id}`);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("queue-count-pending").textContent
+      ).toBe("1 pending");
+      expect(
+        screen.getByTestId("queue-count-correction").textContent
+      ).toBe("1 needs correction");
+    });
+  });
+
+  it("filters the queue by applicator, farm, field, or product substring", async () => {
+    const user = userEvent.setup();
+    const alpha = await seedPendingReview({
+      fieldName: "Alpha Field",
+      farmName: "Big Farm",
+    });
+    const beta = await seedPendingReview({
+      fieldName: "Beta Field",
+      farmName: "Small Farm",
+    });
+
+    renderWithManagerSession();
+
+    await screen.findByTestId(`queue-row-${alpha.id}`);
+    await screen.findByTestId(`queue-row-${beta.id}`);
+
+    await user.type(
+      screen.getByTestId("review-queue-filter").querySelector("input")!,
+      "alpha"
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`queue-row-${alpha.id}`)).toBeTruthy();
+      expect(screen.queryByTestId(`queue-row-${beta.id}`)).toBeNull();
+    });
+  });
+
+  it("shows a filtered-empty alert when filter matches nothing", async () => {
+    const user = userEvent.setup();
+    const submitted = await seedPendingReview();
+    renderWithManagerSession();
+
+    // Wait for the row to load so the filter input becomes enabled before we type.
+    await screen.findByTestId(`queue-row-${submitted.id}`);
+
+    await user.type(
+      screen.getByTestId("review-queue-filter").querySelector("input")!,
+      "this-does-not-exist-xyz"
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("review-queue-filtered-empty")).toBeTruthy();
+    });
   });
 
   it("opens RecordDetailDialog when Details is clicked", async () => {

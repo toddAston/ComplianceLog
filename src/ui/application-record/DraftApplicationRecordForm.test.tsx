@@ -502,4 +502,122 @@ describe("DraftApplicationRecordForm Product Autocomplete", () => {
 
     expect(await screen.findByText(/Product is required/i)).toBeTruthy();
   });
+
+  describe("autofill demo button", () => {
+    it("renders the temporary autofill affordance in dev builds", async () => {
+      render(<DraftApplicationRecordForm />);
+      const btn = await screen.findByTestId("autofill-demo-button");
+      expect(btn.textContent).toMatch(/fill with demo data/i);
+    });
+
+    it("populates required fields when clicked so the draft saves without manual entry", async () => {
+      const user = userEvent.setup();
+      render(<DraftApplicationRecordForm />);
+
+      // Wait for reference data to load before clicking — the handler
+      // pulls org/farm/field/applicator/product from Dexie hooks.
+      await screen.findByRole("option", { name: "North Farm" });
+
+      await user.click(await screen.findByTestId("autofill-demo-button"));
+
+      await waitFor(() => {
+        expect(
+          (screen.getByLabelText("Organization") as HTMLSelectElement).value
+        ).toBe("org-demo-semofarms");
+      });
+      expect(
+        (screen.getByLabelText("Applicator") as HTMLSelectElement).value
+      ).toBe("applicator-john-smith");
+      expect(
+        (screen.getByLabelText("Farm") as HTMLSelectElement).value
+      ).toBe("farm-north");
+      expect(
+        (screen.getByLabelText("Field") as HTMLSelectElement).value
+      ).toBe("field-7");
+      expect(
+        (screen.getByLabelText("Crop or site") as HTMLInputElement).value
+      ).toBe("Soybeans");
+      expect(
+        (screen.getByLabelText("Acres treated") as HTMLInputElement).value
+      ).toBe("42.5");
+      expect(
+        (screen.getByLabelText("Application date") as HTMLInputElement).value
+      ).toBe("2026-05-19");
+      expect(
+        (screen.getByLabelText("Start time") as HTMLInputElement).value
+      ).toBe("08:00");
+      expect(
+        (screen.getByLabelText("Application method") as HTMLInputElement).value
+      ).toBe("Ground broadcast");
+      expect(
+        (screen.getByLabelText("Rate applied") as HTMLInputElement).value
+      ).toBe("1 qt/ac");
+      expect(
+        (screen.getByLabelText("Total amount applied") as HTMLInputElement).value
+      ).toBe("10 gal");
+      expect(
+        (screen.getByLabelText("Temperature") as HTMLInputElement).value
+      ).toBe("72F");
+      expect(
+        (screen.getByLabelText("Wind speed") as HTMLInputElement).value
+      ).toBe("5 mph");
+      expect(
+        (screen.getByLabelText("Wind direction") as HTMLInputElement).value
+      ).toBe("S");
+    });
+
+    it("does not check the attestation box (contractor must still attest)", async () => {
+      const user = userEvent.setup();
+      render(<DraftApplicationRecordForm />);
+      await screen.findByRole("option", { name: "North Farm" });
+
+      await user.click(screen.getByTestId("autofill-demo-button"));
+
+      const attestation = screen.getByRole("checkbox", {
+        name: /attest these inputs/i,
+      }) as HTMLInputElement;
+      expect(attestation.checked).toBe(false);
+    });
+
+    it("results in a saved draft after click + attestation + submit", async () => {
+      const user = userEvent.setup();
+      render(<DraftApplicationRecordForm />);
+      await screen.findByRole("option", { name: "North Farm" });
+
+      await user.click(screen.getByTestId("autofill-demo-button"));
+      await user.click(
+        screen.getByRole("checkbox", { name: /attest these inputs/i })
+      );
+      await user.click(screen.getByRole("button", { name: /save draft/i }));
+
+      await waitFor(async () => {
+        expect(await db.applicationRecords.count()).toBe(1);
+      });
+      const [record] = await db.applicationRecords.toArray();
+      expect(record.workflowStatus).toBe("draft");
+      expect(record.contractorInputs.applicatorName).toBe("John Smith");
+      expect(record.contractorInputs.fieldName).toBe("Field 7");
+      expect(record.contractorInputs.attestationConfirmed).toBe(true);
+    });
+
+    it("is a no-op when reference data has not loaded yet", async () => {
+      // Clear seeded data so the hooks return empty arrays. The button
+      // should still exist (dev gate) but clicking it must not throw and
+      // must not flip any field values.
+      await Promise.all(db.tables.map((t) => t.clear()));
+      const user = userEvent.setup();
+      render(<DraftApplicationRecordForm />);
+
+      const btn = await screen.findByTestId("autofill-demo-button");
+      await user.click(btn);
+
+      expect(
+        (screen.getByLabelText("Organization") as HTMLSelectElement).value
+      ).toBe("");
+      expect(
+        (screen.getByLabelText("Crop or site") as HTMLInputElement).value
+      ).toBe("");
+      expect(await db.applicationRecords.count()).toBe(0);
+    });
+  });
 });

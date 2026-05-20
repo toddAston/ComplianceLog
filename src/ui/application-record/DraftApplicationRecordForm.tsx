@@ -333,8 +333,66 @@ export function DraftApplicationRecordForm({
     }
   });
 
+  const fillWithDemoData = () => {
+    const org = organizations[0];
+    const applicator = applicators[0];
+    const farm = farms[0];
+    const fieldForFarm = farm
+      ? fields.find((f) => f.farmId === farm.id) ?? fields[0]
+      : fields[0];
+    const product = products[0];
+    if (!org || !applicator || !farm || !fieldForFarm || !product) return;
+
+    const opts = { shouldDirty: true, shouldValidate: false } as const;
+    setValue("organizationId", org.id, opts);
+    setValue("applicatorId", applicator.id, opts);
+    setValue("farmId", farm.id, opts);
+    setValue("fieldId", fieldForFarm.id, opts);
+    setValue("productId", product.id, opts);
+    setValue(
+      "cropOrSite",
+      fieldForFarm.defaultCropOrSite ?? "Soybeans",
+      opts
+    );
+    setValue(
+      "acresTreated",
+      fieldForFarm.defaultAcres != null
+        ? String(fieldForFarm.defaultAcres)
+        : "42.5",
+      opts
+    );
+    setValue("applicationDate", "2026-05-19", opts);
+    setValue("startTime", "08:00", opts);
+    setValue("applicationMethod", "Ground broadcast", opts);
+    setValue("rateApplied", "1 qt/ac", opts);
+    setValue("totalAmountApplied", "10 gal", opts);
+    setValue("targetPest", "Waterhemp", opts);
+    setValue("temperature", "72F", opts);
+    setValue("windSpeed", "5 mph", opts);
+    setValue("windDirection", "S", opts);
+  };
+
+  const showDemoFill = import.meta.env.DEV;
+
   return (
     <Box component="form" onSubmit={onSubmit} noValidate>
+      {showDemoFill && (
+        <Box sx={{ mb: 1.5 }}>
+          <Button
+            type="button"
+            variant="text"
+            size="small"
+            onClick={fillWithDemoData}
+            data-testid="autofill-demo-button"
+            sx={{ textTransform: "none", p: 0, minWidth: 0 }}
+          >
+            Fill with demo data
+          </Button>
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+            (debug — pre-launch only)
+          </Typography>
+        </Box>
+      )}
       <SectionPaper title="Who & where">
         <TextField
           select
