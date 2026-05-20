@@ -4,148 +4,183 @@ Use this prompt to generate the complete server-side API specification for Field
 
 ---
 
-## Role
+## 1. Role
 
 You are a senior backend architect picking up FieldLog after the offline-only v0.1 client has shipped. Your job is to design and document the complete HTTP API that the existing React/Dexie client will sync against, and that the future contractor mobile app and manager web app will both consume. This is a clean-slate server design — no legacy endpoints to preserve — but the client's domain model, lifecycle, and invariants are non-negotiable inputs.
 
-## Mission
+## 2. Mission
 
-FieldLog captures pesticide application records as **legally-defensible, immutable evidence** under Missouri 2 CSR 70-25.120 and equivalent state rules. The system is not a legal authorization engine; it captures what was done, by whom, when, where, and with what product, and freezes a Product Snapshot at submit time so the catalog cannot retroactively rewrite history. Chain of custody is the product. Treat every design choice through that lens — if a feature could let a record be silently altered after lock, it is wrong.
+FieldLog captures pesticide application records as **legally-defensible, immutable evidence** under Missouri 2 CSR 70-25.120 and equivalent state rules. The system is **not** a legal authorization engine; it captures what was done, by whom, when, where, and with what product, and freezes a Product Snapshot at submit time so the catalog cannot retroactively rewrite history. Chain of custody is the product. Treat every design choice through that lens — if a feature could let a record be silently altered after lock, it is wrong.
 
-## Required Reading Before You Design Anything
+## 3. Required Reading (in this order)
 
-These exist in the repo. Read them in this order:
+These exist in the repo. Do not start designing until you have read them.
 
-1. `CLAUDE.md` — project rules, trust boundary, current scaffold state.
-2. `docs/product/fieldlog_design_model_v0_1.json` — canonical fields, controls, required rules, workflow/sync enums.
-3. `docs/architecture/reproducible-design/fieldlog_reproducible_design_v0_1.md` — full design snapshot.
-4. `docs/architecture/diagrams/fieldlog_mermaid_diagrams_v0_1.mmd` — golden-path flow, lifecycle state machine, ERD.
-5. `docs/domain/examples/application_record_v01.json` — example record.
-6. `src/domain/schemas.ts` — the **authoritative** Zod schemas; your OpenAPI schemas must be structurally compatible with these (field-for-field, enum-for-enum).
-7. `src/domain/types.ts` — derived TS types (do not duplicate; reference the Zod source).
-8. `src/db/fieldlogDb.ts` — current Dexie tables and indexes; mirror the resource set 1-to-1 unless you have a documented reason to deviate.
-9. `src/application/*` — service layer; the API verbs must cover every public function exported here (`createDraftApplicationRecord`, `submitApplicationRecord`, `requestCorrectionForApplicationRecord`, `acceptAndLockApplicationRecord`, `simulateSyncAllQueued`, `exportLockedApplicationRecord`, `runAllComplianceChecks`, contractor/applicator/farm/field/product CRUD, etc.).
-10. `FieldLog Development Blueprint.md` — regulatory analysis and rationale.
+| # | Path | What it gives you |
+|---|---|---|
+| 1 | `CLAUDE.md` | Project rules, trust boundary, current scaffold state. |
+| 2 | `docs/product/fieldlog_design_model_v0_1.json` | Canonical fields, controls, required rules, workflow/sync enums. |
+| 3 | `docs/architecture/reproducible-design/fieldlog_reproducible_design_v0_1.md` | Full design snapshot. |
+| 4 | `docs/architecture/diagrams/fieldlog_mermaid_diagrams_v0_1.mmd` | Golden-path flow, lifecycle state machine, ERD. |
+| 5 | `docs/domain/examples/application_record_v01.json` | Example record instance. |
+| 6 | `src/domain/schemas.ts` | **Authoritative** Zod schemas. Your OpenAPI schemas must be structurally compatible (field-for-field, enum-for-enum). |
+| 7 | `src/domain/types.ts` | Derived TS types. Do not duplicate — reference the Zod source. |
+| 8 | `src/db/fieldlogDb.ts` | Current Dexie tables and indexes. Mirror the resource set 1-to-1 unless you have a documented reason to deviate. |
+| 9 | `src/application/*` | Service layer. Your API verbs must cover every public function exported here. |
+| 10 | `FieldLog Development Blueprint.md` | Regulatory analysis and rationale. |
 
-If anything in the spec you produce diverges from these sources, flag it explicitly in a "Divergences from v0.1 client" section with the reason — don't silently realign.
+If anything in your spec diverges from these sources, list it in a single **"Divergences from v0.1 client"** section with the reason. Do not silently realign.
 
-## Hard Constraints
+## 4. Hard Constraints
 
-These are not negotiable. Echo them back at the top of your spec.
+These are not negotiable. Echo this whole section back at the top of `api_architecture.md` to confirm receipt.
+
+### 4.1 Security & Auth
 
 1. **No hardcoded secrets.** Every secret comes from environment variables; every env var has a placeholder in a server-side `.env.example`.
-2. **Server-side validation on every endpoint.** Re-validate every payload with the existing Zod schemas (`src/domain/schemas.ts`) at the API boundary — these schemas are the source of truth and must be imported into the server, not re-typed. Trust nothing from the client. Document where each request body is validated and against which schema.
-3. **Postgres + Drizzle ORM.** The server database is **Postgres 16+** (locked, not "unless justified otherwise"). The ORM is **Drizzle** — chosen because (a) it lets the existing Zod schemas drive validation via `drizzle-zod`, preserving the "Zod is source of truth" rule from CLAUDE.md; (b) its schema is plain TypeScript so the migration tool and the runtime see the same types; (c) it stays close to SQL, which matters for the triggers and `jsonb` operators we need. No raw string concatenation into SQL. If you need a query Drizzle can't express, use its `sql\`...\`` tagged template with bound parameters, never interpolation.
-4. **Auth on every endpoint.** Every endpoint declares: (a) authentication required? (b) which roles? (c) which org scope? (d) which record-level ownership check? "Public" endpoints must be called out and justified.
-5. **Auth endpoints are rate-limited.** Document the rate-limit policy (per IP, per user, per token), the storage backend (Redis, etc.), and the 429 response shape.
-6. **Passwords hashed with argon2id (preferred) or bcrypt.** Never plaintext, never reversible encryption, never SHA-family-only. Document the work-factor / memory-cost parameters and the rotation plan.
-7. **Error responses don't leak internals.** No stack traces, no raw SQL errors, no ORM internals. Define a uniform error envelope (`{ error: { code, message, requestId } }`) and a mapping from internal exceptions to safe public codes.
-8. **Migrations are reversible.** Every database migration has both `up` and `down`. Document the migration tool, the naming convention, and the deploy-time policy (e.g., "no destructive `down` runs in prod without a manual override").
-9. **Long-running work goes in background jobs.** PDF export, sync reconciliation, email/SMS, large catalog imports — all must run in a job queue, not in the request handler. Document the queue (BullMQ / Sidekiq / Cloud Tasks / SQS / etc.), retry policy, dead-letter handling, and how the client polls or subscribes for completion.
-10. **Immutability after `locked`.** Once `workflowStatus = locked`, the server must reject every mutation to `contractorInputs`, `managerInputs`, `productSnapshot`, and `system` (except append-only `recordEvents` of type `exported`). Encode this as a database-level constraint or trigger where possible, not just an application-layer check.
-11. **Append-only audit log.** `recordEvents` is append-only. No `UPDATE` or `DELETE` on that table for any user-facing endpoint. Document how administrative corrections (if any) are journaled.
-12. **Product Snapshot is frozen at submit.** The snapshot row is written in the same transaction as the `draft → submitted` transition and is never updated thereafter.
-13. **Tenant isolation.** Every row belongs to an `organizationId`. Every query filters by the caller's org. Cross-tenant access is an auth bug, not a feature.
-14. **Flatten known fields, `jsonb` only for open-ended bags.** Every field with a fixed shape in `src/domain/schemas.ts` becomes a real Postgres column with real types, constraints, and indexes — `workflow_status`, `sync_status`, `organization_id`, `application_date` (`date`), `epa_registration_number` (`text` with a CHECK), `rup_status` (enum), `acres_treated` (`numeric`), `created_at` (`timestamptz`), etc. Reserve `jsonb` for genuinely open-ended payloads: `record_events.metadata`, `contractor_inputs.weather_snapshot` (third-party shape may evolve), future audit context. Do not store an entire application record as one `jsonb` blob — the law cares about specific fields and the database should too. Where a `jsonb` column has a stable shape internally (e.g., `weather_snapshot`), add a CHECK constraint with `jsonb_typeof` or a Zod-validated insert path, and document the contract.
-15. **Containerized deployment is a first-class requirement.** The API ships as an OCI container image. The repo must produce a production-grade `Dockerfile` and a `docker-compose.yml` for local development (API + Postgres + Redis). The image must: run as a non-root user, have no secrets baked in (every secret is read from env at startup), log to stdout/stderr in JSON (no log files inside the container), expose a `/healthz` liveness endpoint and a `/readyz` readiness endpoint that actually probes Postgres and Redis, handle `SIGTERM` for graceful shutdown (drain in-flight requests, close DB pool, close Redis pool), and start in under 5 seconds on a cold container. The image must be reproducible — pinned base image digest, no `apt-get update` without a pinned package list, no `:latest` tags anywhere.
+2. **Auth on every endpoint.** Each endpoint declares (a) authentication required? (b) which roles? (c) which org scope? (d) which record-level ownership check? "Public" endpoints must be called out and justified.
+3. **Auth endpoints are rate-limited.** Document the policy (per IP, per user, per token), the storage backend (Redis), and the 429 response shape.
+4. **Passwords hashed with argon2id (preferred) or bcrypt.** Never plaintext, never reversible encryption, never SHA-family-only. Document work-factor / memory-cost parameters and the rotation plan.
+5. **Error responses don't leak internals.** No stack traces, no raw SQL errors, no ORM internals. Define a uniform envelope (`{ error: { code, message, requestId } }`) and a mapping from internal exceptions to safe public codes.
+6. **Tenant isolation.** Every row belongs to an `organizationId`. Every query filters by the caller's org. Cross-tenant access is an auth bug, not a feature.
 
-## Deliverables
+### 4.2 Data Integrity & Validation
 
-Produce **all** of the following. Filenames are suggestions; keep them under `docs/architecture/api/`.
+7. **Server-side validation on every endpoint.** Re-validate every payload against the existing Zod schemas (`src/domain/schemas.ts`) at the API boundary — these schemas are the source of truth and must be **imported** into the server, not re-typed. Trust nothing from the client.
+8. **Postgres 16+ as the system of record.** Locked, not "unless justified otherwise."
+9. **Drizzle ORM, no raw string SQL.** Chosen because (a) `drizzle-zod` lets the existing Zod schemas drive validation, preserving the "Zod is source of truth" rule from CLAUDE.md; (b) its schema is plain TypeScript so the migration tool and the runtime see the same types; (c) it stays close to SQL, which matters for the triggers and `jsonb` operators we need. When you need a query Drizzle can't express, use its `sql\`...\`` tagged template with bound parameters — never interpolation.
+10. **Migrations are reversible.** Every migration has both `up` and `down`. Document the migration tool (`drizzle-kit`), the naming convention, and the deploy-time policy (no destructive `down` in prod without a manual override).
+11. **Flatten known fields, `jsonb` only for open-ended bags.** Every field with a fixed shape in `src/domain/schemas.ts` becomes a real Postgres column with real types, constraints, and indexes — `workflow_status`, `sync_status`, `organization_id`, `application_date` (`date`), `epa_registration_number` (`text` + CHECK), `rup_status` (enum), `acres_treated` (`numeric`), `created_at` (`timestamptz`), etc. Reserve `jsonb` for genuinely open-ended payloads: `record_events.metadata`, `contractor_inputs.weather_snapshot` (third-party shape may evolve), future audit context. Never store an entire application record as one `jsonb` blob. Where a `jsonb` column has a stable shape internally, add a CHECK with `jsonb_typeof` or a Zod-validated insert path.
 
-### 1. `openapi.yaml` — OpenAPI 3.1 specification
+### 4.3 Lifecycle Invariants
 
-A single, lint-clean OpenAPI 3.1 file covering every endpoint. Requirements:
+12. **Immutability after `locked`.** Once `workflowStatus = locked`, the server rejects every mutation to `contractorInputs`, `managerInputs`, `productSnapshot`, and `system` — except appending a `recordEvents` row of type `exported`. Enforce at the **database** layer via trigger, not just in application code.
+13. **Append-only audit log.** `recordEvents` rows are never UPDATEd or DELETEd by any user-facing endpoint. Enforce at the database layer. Document how administrative corrections (if any exist) are journaled.
+14. **Product Snapshot is frozen at submit.** The snapshot row is written in the same transaction as `draft → submitted` and is never updated thereafter.
 
-- **Components/schemas** are derived from `src/domain/schemas.ts`. Use `$ref` aggressively — no inline duplication of record shapes. Where the server adds fields the client doesn't have (e.g., `serverId`, `etag`, `createdByUserId`), document why.
-- **Every endpoint** has: summary, description, tags, parameters, request body schema, all response codes (including 400/401/403/404/409/422/429/500), security requirements, rate-limit headers, idempotency-key header where applicable.
-- **`security`** is declared globally and overridden per-endpoint only when an endpoint is intentionally unauthenticated. The default is authenticated.
+### 4.4 Runtime & Operations
+
+15. **Long-running work goes in background jobs.** PDF export, sync reconciliation, email/SMS, large catalog imports — all run in BullMQ on Redis, never in the request handler. Document retry policy, dead-letter handling, and how the client polls (or subscribes via SSE) for completion.
+16. **Containerized deployment is first-class.** The API ships as an OCI container image. The image must:
+    - Run as a non-root user.
+    - Have no secrets baked in — every secret is read from env at startup.
+    - Log to stdout/stderr as JSON (no log files inside the container).
+    - Expose `/healthz` (liveness) and `/readyz` (readiness — actually probes Postgres and Redis).
+    - Handle `SIGTERM` for graceful shutdown: drain in-flight requests, close DB pool, close Redis pool.
+    - Cold-start in under 5 seconds.
+    - Be reproducible: pinned base-image digest, no `apt-get update` without a pinned package list, no `:latest` tags anywhere.
+
+## 5. Deliverables
+
+Produce **all** of the following under `docs/architecture/api/`. Filenames are suggestions; if you change one, update this list.
+
+### 5.1 `openapi.yaml` — OpenAPI 3.1 specification
+
+A single, lint-clean OpenAPI 3.1 file covering every endpoint.
+
+- **Components/schemas** are derived from `src/domain/schemas.ts`. Use `$ref` aggressively — no inline duplication of record shapes. Where the server adds fields the client doesn't have (`serverId`, `etag`, `createdByUserId`), document why.
+- **Every endpoint** has: summary, description, tags, parameters, request body schema, **all** response codes (400/401/403/404/409/422/429/500 where applicable), security requirements, rate-limit headers, idempotency-key header where applicable.
+- **`security`** is declared globally; per-endpoint overrides only when the endpoint is intentionally unauthenticated. Default is authenticated.
 - **Examples** are real, not placeholder — pull from `docs/domain/examples/application_record_v01.json` where possible.
-- **No `additionalProperties: true` on request bodies** — strict validation only.
+- **No `additionalProperties: true` on request bodies.** Strict validation only.
+- The file must pass `spectral lint openapi.yaml` (or equivalent) cleanly. Paste the clean output at the top of `api_architecture.md`.
 
-### 2. `api_architecture.md` — written architecture document
+### 5.2 `api_architecture.md` — architecture document
 
 Sections, in order:
 
-1. **Stack details.** The stack is fixed: **Node 22+ LTS / TypeScript / Fastify / Drizzle ORM / Postgres 16+ / BullMQ on Redis** for background jobs, shipped as **an OCI container image**. Your job in this section is not to re-pick the stack; it's to (a) explain how Drizzle schemas are derived from or co-defined with the existing Zod schemas (recommend `drizzle-zod` for schema → Zod inference, or a hand-written mapping if Zod stays canonical — pick one and justify), (b) describe the project layout (`/src/domain` shared with the client? a private npm package? a monorepo?), (c) list the production dependencies with pinned major versions, and (d) name the hosting target. Because the artifact is a container, any platform that runs OCI images works — pick the simplest one that gives you managed Postgres + managed Redis + horizontal scaling out of the box (Fly.io, Railway, AWS ECS/Fargate, GCP Cloud Run, or plain Kubernetes). Justify in one paragraph against operational burden, cold-start latency for the readiness probe, and the cost of one small + one DB + one Redis instance for a v1 deployment.
+1. **Stack details.** Stack is fixed: **Node 22+ LTS / TypeScript / Fastify / Drizzle ORM / Postgres 16+ / BullMQ on Redis**, shipped as an OCI container. Your job is to (a) explain how Drizzle schemas are derived from or co-defined with the existing Zod schemas — recommend `drizzle-zod` or a hand-written mapping, pick one and justify; (b) describe the project layout (is `/src/domain` shared with the client? a private npm package? a monorepo?); (c) list production dependencies with pinned major versions; (d) name the hosting target. Any OCI-capable platform works (Fly.io, Railway, AWS ECS/Fargate, GCP Cloud Run, Kubernetes) — pick the simplest that gives you managed Postgres + managed Redis + horizontal scaling. Justify in one paragraph against operational burden, cold-start latency for the readiness probe, and the monthly cost of one small API instance + one DB + one Redis at v1 scale.
 2. **Authentication & session model.** Cookie session vs. JWT vs. opaque bearer token. Refresh-token rotation, revocation list, multi-device behavior, "remember me" semantics, MFA roadmap (does v1 ship with TOTP, or just a hook for it?). Document the password reset flow end-to-end including rate limits and token expiry.
-3. **Authorization model.** Roles (`applicator`, `manager`, future `org_admin`?), scopes, ownership rules (a contractor can only submit records they created; a manager can review any record in their org; what about cross-org auditors?). Express as a decision table, not prose.
-4. **Resource map.** One row per Dexie table, mapped to one or more REST resources. Note any resources that are server-only (e.g., audit log access for managers, system-wide product catalog updates).
-5. **Sync protocol.** This is the heart of the API. The client is offline-first; records are created locally with client-generated UUIDs and `syncStatus = "queued"`, then flushed when the network returns. Specify:
-   - Idempotency key strategy (every mutating request carries one; server stores the result and replays it on retry).
-   - Conflict resolution. The client's local record may be stale relative to the server's (e.g., a manager already requested correction). Define server-wins, client-wins, or merge per field and document why.
-   - Batch sync endpoint? Or per-record? Or both? Justify.
-   - Sync status transitions: who sets `syncing` (client) vs. `synced` / `sync_failed` (server reply)? Make it unambiguous.
-   - How `recordEvents` reconcile — does the client send local events that the server replays, or does the server author its own events on receipt? (The current client appends events locally; pick a story and stick to it.)
-6. **Lifecycle endpoints.** For each workflow transition (`draft → submitted`, `submitted → pending_review`, `pending_review → needs_correction`, `pending_review → locked`, `locked → exported`), specify: HTTP verb, path, request body, server-side checks (role, ownership, current status, invariants), events appended, and side effects (product snapshot creation, PDF generation job, etc.).
-7. **Compliance check semantics.** The client runs `runAllComplianceChecks` and stores outcomes. Decide whether the server re-runs these on submit (recommended — the client cannot be trusted), and whether the stored outcomes are the server's or the client's. Document the rule-versioning story: if a rule changes after a record is submitted, the stored outcome is preserved verbatim.
-8. **Pagination, filtering, sorting.** Cursor-based (recommended) or offset-based. Standardize across all list endpoints. Define the cursor format, default page size, max page size, and which fields are filterable/sortable per resource.
-9. **File export.** Locked records can be exported as PDF (`applicationRecordPdf.ts` exists client-side). Server endpoint should: (a) accept an export request, (b) enqueue a background job, (c) return a job id + polling URL or signed download URL with TTL, (d) emit an `exported` event on completion. Do not stream the PDF synchronously.
-10. **Error model.** Full table of error codes (`AUTH_REQUIRED`, `FORBIDDEN`, `RECORD_LOCKED`, `STATUS_TRANSITION_INVALID`, `IDEMPOTENCY_CONFLICT`, `VALIDATION_FAILED`, `RATE_LIMITED`, `CONFLICT_STALE_RECORD`, etc.) mapped to HTTP status codes, when they fire, what the client should do, and what (if anything) gets logged.
+3. **Authorization model.** Roles (`applicator`, `manager`, future `org_admin`?), scopes, ownership rules (a contractor can only submit records they created; a manager can review any record in their org; what about cross-org auditors?). Express as a **decision table**, not prose.
+4. **Resource map.** One row per Dexie table, mapped to one or more REST resources. Note any server-only resources (audit log access for managers, system-wide product catalog updates).
+5. **Sync protocol.** The heart of the API. Client is offline-first; records are created locally with client-generated UUIDs and `syncStatus = "queued"`, flushed when the network returns. Specify:
+   - Idempotency-key strategy (every mutating request carries one; server stores the result and replays it on retry).
+   - Conflict resolution. The client's local record may be stale (e.g., a manager already requested correction). Define server-wins, client-wins, or merge per field — and why.
+   - Batch sync endpoint, per-record, or both? Justify.
+   - Sync-status transitions: who sets `syncing` (client) vs. `synced` / `sync_failed` (server reply)? Make it unambiguous.
+   - How `recordEvents` reconcile — does the client send local events that the server replays, or does the server author its own events on receipt? Pick a story and stick to it.
+6. **Lifecycle endpoints.** For each transition (`draft → submitted`, `submitted → pending_review`, `pending_review → needs_correction`, `pending_review → locked`, `locked → exported`): HTTP verb, path, request body, server-side checks (role, ownership, current status, invariants), events appended, side effects (snapshot creation, PDF job enqueue, etc.). **Use a table.**
+7. **Compliance check semantics.** The client runs `runAllComplianceChecks` and stores outcomes. Decide whether the server re-runs on submit (recommended — the client cannot be trusted) and whether the stored outcomes are the server's or the client's. Document the rule-versioning story: if a rule changes after a record is submitted, the stored outcome is preserved verbatim.
+8. **Pagination, filtering, sorting.** Cursor-based (recommended) or offset-based. Standardize across all list endpoints. Define cursor format, default page size, max page size, and which fields are filterable/sortable per resource.
+9. **File export.** Locked records can be exported as PDF (`applicationRecordPdf.ts` exists client-side). Server endpoint: (a) accepts an export request, (b) enqueues a background job, (c) returns a job id + polling URL or signed download URL with TTL, (d) emits an `exported` event on completion. **Do not stream the PDF synchronously.**
+10. **Error model.** Full table of error codes (`AUTH_REQUIRED`, `FORBIDDEN`, `RECORD_LOCKED`, `STATUS_TRANSITION_INVALID`, `IDEMPOTENCY_CONFLICT`, `VALIDATION_FAILED`, `RATE_LIMITED`, `CONFLICT_STALE_RECORD`, etc.) mapped to HTTP status codes, fire conditions, client recovery action, and what gets logged.
 11. **Observability.** Structured logging (JSON, with `requestId`, `userId`, `orgId`, `recordId` where applicable), metrics surface (RED method: rate / errors / duration per endpoint), audit log for security-sensitive actions (login, role change, lock, export). Specify retention.
-12. **Deployment & secrets.** `.env.example` contents for the server. Where secrets live in prod (AWS Secrets Manager / Vault / GCP Secret Manager / platform-native — pick one consistent with the hosting target). Rotation policy. How the container picks up rotated secrets (restart, sidecar reload, etc.).
-13. **Containerization & runtime.** Cover, in this order: (a) the multi-stage `Dockerfile` strategy (builder stage produces a pruned `node_modules`, runtime stage runs as non-root on a `distroless` or `gcr.io/distroless/nodejs22-debian12` base — justify the base image choice); (b) how migrations run on deploy — a separate one-shot container running `drizzle-kit migrate` before the API container starts is the recommended pattern, not running migrations in the API process's startup hook (justify if you deviate); (c) the `/healthz` and `/readyz` contract — what each probes, what response codes they return, and what timeouts the orchestrator should use; (d) graceful-shutdown behavior on `SIGTERM` (request drain timeout, DB pool close, Redis close, in-flight BullMQ worker behavior); (e) the image tag & registry strategy (semver tags + git SHA tags, no `:latest` in production manifests, which registry); (f) image-scan + SBOM expectations (Trivy / Grype / Snyk in CI, failing the build on `HIGH` or `CRITICAL` CVEs in dependencies or base image).
-14. **Open questions.** Any decision you couldn't make without a product call — list them explicitly so the next reviewer can answer.
+12. **Deployment & secrets.** Server-side `.env.example` contents. Where secrets live in prod (AWS Secrets Manager / Vault / GCP Secret Manager / platform-native — consistent with the hosting target). Rotation policy. How the container picks up rotated secrets (restart, sidecar reload).
+13. **Containerization & runtime.** Cover, in order:
+    1. Multi-stage `Dockerfile` strategy — `deps` stage produces a pruned `node_modules`; `build` stage emits `dist/`; `runtime` stage uses `gcr.io/distroless/nodejs22-debian12` pinned by digest, runs as `nonroot`. Justify the base image choice.
+    2. How migrations run on deploy — a **separate one-shot container** running `drizzle-kit migrate` before the API container starts is the recommended pattern, not the API's startup hook. Justify if you deviate.
+    3. `/healthz` and `/readyz` contract — what each probes, response codes, orchestrator timeouts.
+    4. `SIGTERM` graceful-shutdown behavior — request-drain timeout, DB pool close, Redis close, in-flight BullMQ worker behavior.
+    5. Image tag & registry strategy — semver + git SHA tags, no `:latest` in production manifests, which registry.
+    6. Image-scan + SBOM expectations — Trivy (default) / Grype / Snyk in CI, failing the build on `HIGH` or `CRITICAL` CVEs in dependencies or base image.
+14. **Open questions.** Decisions you couldn't make without a product call — list explicitly so the next reviewer can answer.
 
-### 3. `migrations/0001_initial_schema.sql` (and a `down` counterpart)
+### 5.3 `migrations/0001_initial_schema.sql` (+ `down` counterpart)
 
-The first migration, expressed in raw Postgres 16 SQL — produced as the output of `drizzle-kit generate` against your Drizzle schema, then hand-audited and committed. Both the Drizzle schema file (`src/db/schema.ts` on the server) and the generated SQL go in the deliverable. Must include:
+Raw Postgres 16 SQL, produced as the output of `drizzle-kit generate` against your Drizzle schema, then hand-audited. Commit both the Drizzle schema file (`src/db/schema.ts` on the server) and the generated SQL.
 
-- All tables corresponding to the Dexie stores, with fixed-shape fields as real columns per constraint #14 (not buried in `jsonb`).
+- All tables corresponding to the Dexie stores, with fixed-shape fields as real columns per constraint #11 (not buried in `jsonb`).
 - Postgres enum types for `workflow_status`, `sync_status`, `rup_status`, `review_status`, `record_event_type`, `user_role` — derived from the Zod enums in `src/domain/schemas.ts`.
-- All required indexes: mirror the Dexie index hints in `fieldlogDb.ts`, plus a B-tree on `(organization_id, workflow_status)` and `(organization_id, sync_status)` for the review-queue and sync-flush paths, plus a GIN index on `record_events.metadata` if you keep that as `jsonb`.
-- `organization_id` on every row, with a foreign key and `NOT NULL`. Cross-tenant access prevention is enforced at the query layer (Drizzle middleware / repository pattern); document that.
-- A trigger enforcing "no UPDATE or DELETE on `record_events`" — `BEFORE UPDATE OR DELETE ... RAISE EXCEPTION`.
-- A trigger enforcing "no UPDATE on `application_records` once `workflow_status = 'locked'`" with an explicit allowlist for the `locked → exported` transition (only `workflow_status`, `system.lastUpdatedAt`, and an appended `exported` event are mutable on that hop).
-- A CHECK constraint on `application_records` enforcing the lifecycle state machine (e.g., `workflow_status IN (...)` and any forbidden transitions caught at insert/update time).
+- All required indexes: mirror the Dexie hints in `fieldlogDb.ts`, plus B-tree on `(organization_id, workflow_status)` and `(organization_id, sync_status)` for the review-queue and sync-flush paths, plus a GIN index on `record_events.metadata` if you keep it as `jsonb`.
+- `organization_id` on every row, FK + `NOT NULL`. Cross-tenant access prevention is enforced at the query layer (Drizzle middleware / repository pattern) — document that.
+- Trigger enforcing "no UPDATE or DELETE on `record_events`" — `BEFORE UPDATE OR DELETE ... RAISE EXCEPTION`.
+- Trigger enforcing "no UPDATE on `application_records` once `workflow_status = 'locked'`" with an explicit allowlist for the `locked → exported` transition (only `workflow_status`, `system.lastUpdatedAt`, and an appended `exported` event are mutable on that hop).
+- CHECK constraint on `application_records` enforcing the lifecycle state machine (forbidden transitions caught at insert/update time).
 - `created_at` / `updated_at` as `timestamptz` with `DEFAULT now()`.
 
-The `down` migration must reverse the structure cleanly on a fresh database. It does not need to be safe to run against populated production data — document that, and document the Drizzle migration command (`drizzle-kit drop` semantics) the deploy pipeline uses.
+The `down` migration must reverse the structure cleanly on a fresh database. It does **not** need to be safe against populated production data — document that, and document the `drizzle-kit` semantics the deploy pipeline uses.
 
-### 4. `error_codes.md`
+### 5.4 `error_codes.md`
 
-The full error-code table from section 10 of the architecture doc, extracted as a standalone reference for client and server implementers.
+The error-code table from section 10 of the architecture doc, extracted as a standalone reference for client and server implementers.
 
-### 5. `client_migration_notes.md`
+### 5.5 `client_migration_notes.md`
 
-What the existing React/Dexie client has to change to talk to this API. Short, pragmatic, specifically:
+What the existing React/Dexie client has to change to talk to this API. Short, pragmatic:
 
 - Where the existing service-layer functions in `src/application/*` need a network call added.
-- Which Zod schemas need a server-shape variant (e.g., adding `serverId`, `etag`, `createdByUserId` fields).
-- Sync flush function: where it lives, when it runs (online detect, manual trigger, periodic), how it handles partial failure.
-- How the demo session/role context is replaced with real auth.
+- Which Zod schemas need a server-shape variant (e.g., adding `serverId`, `etag`, `createdByUserId`).
+- Sync flush function — where it lives, when it runs (online detect, manual trigger, periodic), how it handles partial failure.
+- How the demo `SessionContext` / `DEMO_*_ACTOR` constants are replaced with real auth.
 
-### 6. Container artifacts — `Dockerfile`, `docker-compose.yml`, `.dockerignore`, `docker/README.md`
+### 5.6 Container artifacts — `Dockerfile`, `docker-compose.yml`, `.dockerignore`, `docker/README.md`, CI workflow
 
-Produce a working set of container files for the API. They go under a `docker/` directory in the server repo (or the repo root for the `Dockerfile` itself — pick one and document it). Concretely:
+Working files, not pseudocode.
 
-- **`Dockerfile`** — multi-stage:
-  - Stage 1 (`deps`): `node:22-bookworm-slim` pinned by digest, installs only production dependencies via `npm ci --omit=dev`.
-  - Stage 2 (`build`): same base, installs full deps, runs `tsc` (or your build tool) to emit `dist/`.
-  - Stage 3 (`runtime`): `gcr.io/distroless/nodejs22-debian12` pinned by digest, copies `node_modules` from `deps` and `dist/` from `build`, sets `USER nonroot`, `EXPOSE 8080`, `ENTRYPOINT ["node", "dist/server.js"]`.
+- **`Dockerfile`** — three stages:
+  - `deps`: `node:22-bookworm-slim` pinned by digest; `npm ci --omit=dev`.
+  - `build`: same base; installs full deps; runs `tsc` (or your build tool) to emit `dist/`.
+  - `runtime`: `gcr.io/distroless/nodejs22-debian12` pinned by digest; copies `node_modules` from `deps` and `dist/` from `build`; `USER nonroot`; `EXPOSE 8080`; `ENTRYPOINT ["node", "dist/server.js"]`.
   - No `apt-get`, no shell in the final image, no build tools in the final image.
-  - `HEALTHCHECK` instruction calling `/healthz` (if the orchestrator uses Docker-level health checks; otherwise document that Kubernetes/Cloud Run probes replace it).
+  - `HEALTHCHECK` calling `/healthz` if the orchestrator uses Docker-level health checks; otherwise document that Kubernetes/Cloud Run probes replace it.
 - **`docker-compose.yml`** — local dev only, never used in production:
-  - `api` service built from the local `Dockerfile`, with code mounted only in dev mode (override file) so the production image stays clean.
-  - `postgres:16` service with a named volume, healthcheck, `POSTGRES_PASSWORD` from `.env` (not hardcoded).
-  - `redis:7-alpine` service with a healthcheck.
-  - `migrate` one-shot service that depends on `postgres` healthy and runs `drizzle-kit migrate`, then exits.
+  - `api` built from the local `Dockerfile`, with source mounted only via a dev-mode override file so the production image stays clean.
+  - `postgres:16` with a named volume, healthcheck, `POSTGRES_PASSWORD` from `.env` (never hardcoded).
+  - `redis:7-alpine` with a healthcheck.
+  - `migrate` one-shot service that depends on `postgres` healthy, runs `drizzle-kit migrate`, then exits.
   - `api` depends on `migrate` completing and `redis` healthy.
-  - Network is the default compose network; no published ports for Postgres/Redis except via opt-in override file.
+  - Default compose network; no published ports for Postgres/Redis except via opt-in override.
 - **`.dockerignore`** — at minimum: `node_modules`, `.git`, `dist`, `coverage`, `.env*` (never bake env files into the image), `*.md` except `package.json`, `reference/vendor-docs/`, `docs/`, `research/`, `data/`.
-- **`docker/README.md`** — step-by-step "how to run locally" (one paragraph), "how the production image differs from compose" (one paragraph), and the full list of environment variables the container reads at startup (referencing the server `.env.example` as the canonical list).
+- **`docker/README.md`** — one paragraph each for "how to run locally" and "how the production image differs from compose," plus the full list of environment variables the container reads at startup (referencing the server `.env.example` as the canonical list).
+- **CI workflow** (GitHub Actions YAML by default — substitute the team's runner if different) that on every push to `main`:
+  1. Builds the image.
+  2. Runs Trivy against it.
+  3. **Fails the build on any `HIGH` or `CRITICAL` CVE** in dependencies or base image.
+  4. Tags the image with both the git SHA and the semver from `package.json`.
+  5. Pushes only if scan passed.
 
-Also include in this section: the **CI workflow snippet** (GitHub Actions YAML, or whichever runner the team uses) that builds the image on every push to `main`, runs the image scanner (Trivy is the easy default), tags it with both the git SHA and the semver from `package.json`, and pushes to the chosen registry. The workflow must fail on `HIGH` or `CRITICAL` CVEs and must not push an image that hasn't passed the scan.
+## 6. Style Rules
 
-## Style Rules
-
-- **Be concrete.** Every endpoint has a path. Every request body has a schema. Every error has a code. "TBD" is acceptable only inside the "Open questions" section.
-- **Prefer tables to prose** for: role/permission matrices, error code lists, lifecycle transitions, rate-limit policies.
+- **Be concrete.** Every endpoint has a path. Every request body has a schema. Every error has a code. "TBD" is acceptable only inside "Open questions."
+- **Prefer tables to prose** for: role/permission matrices, error codes, lifecycle transitions, rate-limit policies, resource maps.
 - **Cite the source of every rule** that comes from the existing codebase (e.g., "`workflowStatus` enum per `src/domain/schemas.ts:5-13`") so the next reviewer can verify you didn't drift.
 - **No marketing language.** No "best-in-class," no "robust," no "seamless." This is a working document.
 - **Flag every divergence** from the v0.1 client in a single, scannable section.
-- **Do not invent product behavior.** If the v0.1 docs and code don't tell you what should happen, put it in "Open questions" — don't guess.
+- **Do not invent product behavior.** If the v0.1 docs and code don't tell you what should happen, it goes in "Open questions" — never guess.
 
-## When You're Done
+## 7. When You're Done
 
-Run the OpenAPI file through a linter (`spectral lint openapi.yaml` or equivalent) and paste the clean output at the top of `api_architecture.md`. Run any SQL through a parser to confirm it's syntactically valid. Then summarize, in under 300 words, the three biggest decisions you made and the three biggest open questions you couldn't answer without a product call. That summary is what a human reviewer reads first.
+1. Run `spectral lint openapi.yaml` (or equivalent). Paste the clean output at the top of `api_architecture.md`.
+2. Run the SQL through a Postgres parser (`pg_query`, `psql -f --dry-run`-equivalent, or just `psql` against a throwaway DB) to confirm it's syntactically valid.
+3. Build the container locally — `docker compose build` and `docker compose up` must succeed end-to-end on a fresh checkout with only `.env.example` copied to `.env`.
+4. Write a **< 300-word executive summary** at the top of `api_architecture.md`: the three biggest decisions you made and the three biggest open questions you couldn't answer without a product call. That summary is what a human reviewer reads first.
