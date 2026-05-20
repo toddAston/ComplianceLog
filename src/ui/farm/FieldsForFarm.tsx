@@ -5,6 +5,7 @@ import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
+import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -85,6 +86,44 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
           ({fields.length})
         </Typography>
       </Stack>
+
+      {fields.length > 0 && (
+        <TextField
+          select
+          size="small"
+          label="Pick a field to edit"
+          value={renameTargetId ?? ""}
+          onChange={(e) => {
+            const id = e.target.value;
+            if (!id) {
+              setRenameTargetId(null);
+              setRenameDraft("");
+              setRenameError(null);
+              return;
+            }
+            const target = fields.find((field) => field.id === id);
+            if (!target) return;
+            setRenameTargetId(id);
+            setRenameDraft(target.name);
+            setRenameError(null);
+          }}
+          slotProps={{
+            htmlInput: {
+              "aria-label": `Pick a field to edit on farm ${farmId}`,
+            },
+          }}
+          sx={{ mb: 1.5 }}
+          fullWidth
+          data-testid={`field-picker-${farmId}`}
+        >
+          <MenuItem value="">— select —</MenuItem>
+          {fields.map((f) => (
+            <MenuItem key={f.id} value={f.id}>
+              {f.name}
+            </MenuItem>
+          ))}
+        </TextField>
+      )}
 
       {fields.length === 0 ? (
         <Alert

@@ -132,6 +132,60 @@ describe("FieldsForFarm", () => {
     expect(screen.queryByText("Theirs")).toBeNull();
   });
 
+  it("hides the field picker when the farm has no fields", async () => {
+    render(<FieldsForFarm organizationId={ORG} farmId={FARM_ID} />);
+    await screen.findByTestId(`fields-empty-${FARM_ID}`);
+    expect(screen.queryByTestId(`field-picker-${FARM_ID}`)).toBeNull();
+  });
+
+  it("shows the field picker when at least one field exists", async () => {
+    await db.fields.bulkAdd([
+      {
+        id: "f-1",
+        organizationId: ORG,
+        farmId: FARM_ID,
+        name: "Alpha",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "f-2",
+        organizationId: ORG,
+        farmId: FARM_ID,
+        name: "Bravo",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    render(<FieldsForFarm organizationId={ORG} farmId={FARM_ID} />);
+
+    const picker = await screen.findByLabelText("Pick a field to edit");
+    await userEvent.setup().click(picker);
+    expect(await screen.findByRole("option", { name: "Alpha" })).toBeTruthy();
+    expect(await screen.findByRole("option", { name: "Bravo" })).toBeTruthy();
+  });
+
+  it("picking a field via the picker opens its inline editor and edits the name", async () => {
+    const user = userEvent.setup();
+    await db.fields.add({
+      id: "f-1",
+      organizationId: ORG,
+      farmId: FARM_ID,
+      name: "Pickable",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FieldsForFarm organizationId={ORG} farmId={FARM_ID} />);
+
+    await user.click(await screen.findByLabelText("Pick a field to edit"));
+    await user.click(await screen.findByRole("option", { name: "Pickable" }));
+
+    const input = await screen.findByLabelText("Edit Pickable");
+    await user.clear(input);
+    await user.type(input, "Picked & Renamed");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("Picked & Renamed")).toBeTruthy();
+    expect((await db.fields.get("f-1"))?.name).toBe("Picked & Renamed");
+  });
+
   it("exposes an Edit affordance (not Rename) on field rows", async () => {
     await db.fields.add({
       id: "f-1",
