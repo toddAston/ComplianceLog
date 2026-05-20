@@ -106,6 +106,18 @@ export const productSnapshotSchema = z.object({
   snapshotCreatedAt: z.string(),
 });
 
+export const weatherSnapshotSchema = z.object({
+  source: z.enum([
+    "nws_observation",
+    "nws_forecast_grid",
+    "manual",
+    "stale_cache",
+  ]),
+  stationId: z.string().optional(),
+  observedAt: z.string().optional(),
+  capturedAt: z.string(),
+});
+
 export const contractorInputsSchema = z.object({
   applicatorId: z.string(),
   applicatorName: z.string(),
@@ -138,6 +150,7 @@ export const contractorInputsSchema = z.object({
   windSpeed: z.string(),
   windDirection: z.string(),
   weatherNotes: z.string().optional(),
+  weatherSnapshot: weatherSnapshotSchema.optional(),
 
   attestationConfirmed: z.boolean(),
   submittedBy: z.string().optional(),

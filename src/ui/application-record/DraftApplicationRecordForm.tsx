@@ -6,6 +6,7 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
+import Chip from "@mui/material/Chip";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -19,8 +20,20 @@ import {
   useAllProducts,
 } from "../../db/queries";
 import { createDraftApplicationRecord } from "../../application/applicationRecordService";
-import type { ContractorInputs } from "../../domain/types";
+import type { ContractorInputs, WeatherSnapshot } from "../../domain/types";
 import { DEMO_APPLICATOR_ACTOR } from "../demoSession";
+import {
+  getCurrentCoordinate,
+  type GeolocationResult,
+} from "../../application/geolocation";
+import {
+  nwsWeatherAdapter,
+  type NwsWeatherAdapter,
+} from "../../application/nwsWeatherAdapter";
+import type {
+  WeatherReading,
+  WeatherService,
+} from "../../application/weatherService";
 
 const optionalString = z.string().optional().or(z.literal(""));
 
@@ -70,7 +83,69 @@ function SectionPaper({
   );
 }
 
-export function DraftApplicationRecordForm() {
+export type DraftApplicationRecordFormProps = {
+  weatherService?: WeatherService | NwsWeatherAdapter;
+  getCoordinate?: () => Promise<GeolocationResult>;
+};
+
+type WeatherCaptureState =
+  | { kind: "idle" }
+  | { kind: "capturing" }
+  | {
+      kind: "captured";
+      snapshot: WeatherSnapshot;
+      reading: WeatherReading;
+    }
+  | { kind: "failed"; reason: string };
+
+function readingToFormStrings(reading: WeatherReading): {
+  temperature: string;
+  windSpeed: string;
+  windDirection: string;
+} {
+  return {
+    temperature:
+      reading.temperatureF != null
+        ? `${reading.temperatureF.toFixed(0)}F`
+        : "",
+    windSpeed:
+      reading.windSpeedMph != null
+        ? `${reading.windSpeedMph.toFixed(1)} mph`
+        : "",
+    windDirection: reading.windDirection ?? "",
+  };
+}
+
+function describeFailure(
+  geo: GeolocationResult | null,
+  weatherMessage?: string
+): string {
+  if (geo) {
+    switch (geo.kind) {
+      case "permission_denied":
+        return "Location permission denied. Enter conditions manually.";
+      case "insecure_context":
+        return "Location requires a secure (HTTPS) connection. Enter conditions manually.";
+      case "unsupported":
+        return "This device cannot share its location. Enter conditions manually.";
+      case "timeout":
+        return "Location lookup timed out. Enter conditions manually.";
+      case "error":
+        return `Location error: ${geo.message}. Enter conditions manually.`;
+      case "ok":
+        break;
+    }
+  }
+  return (
+    weatherMessage ??
+    "Weather lookup failed. Enter conditions manually."
+  );
+}
+
+export function DraftApplicationRecordForm({
+  weatherService = nwsWeatherAdapter,
+  getCoordinate = () => getCurrentCoordinate(),
+}: DraftApplicationRecordFormProps = {}) {
   const organizations = useAllOrganizations();
   const farms = useAllFarms();
   const fields = useAllFields();
@@ -83,11 +158,15 @@ export function DraftApplicationRecordForm() {
     | { kind: "saved"; recordId: string }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
+  const [captureState, setCaptureState] = useState<WeatherCaptureState>({
+    kind: "idle",
+  });
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
     watch,
     formState: { errors },
   } = useForm<DraftFormValues>({
@@ -120,6 +199,42 @@ export function DraftApplicationRecordForm() {
   const fieldsForFarm = selectedFarmId
     ? fields.filter((f) => f.farmId === selectedFarmId)
     : fields;
+
+  const onCaptureWeather = async () => {
+    setCaptureState({ kind: "capturing" });
+    const geo = await getCoordinate();
+    if (geo.kind !== "ok") {
+      setCaptureState({ kind: "failed", reason: describeFailure(geo) });
+      return;
+    }
+    const result = await weatherService.fetchCurrent(geo.coordinate);
+    if (result.kind !== "ok") {
+      setCaptureState({
+        kind: "failed",
+        reason: describeFailure(
+          null,
+          result.kind === "timeout"
+            ? "Weather lookup timed out. Enter conditions manually."
+            : result.message
+        ),
+      });
+      return;
+    }
+    const fields = readingToFormStrings(result.reading);
+    setValue("temperature", fields.temperature, { shouldDirty: true });
+    setValue("windSpeed", fields.windSpeed, { shouldDirty: true });
+    setValue("windDirection", fields.windDirection, { shouldDirty: true });
+    setCaptureState({
+      kind: "captured",
+      reading: result.reading,
+      snapshot: {
+        source: result.reading.source,
+        stationId: result.reading.stationId,
+        observedAt: result.reading.observedAt,
+        capturedAt: result.reading.capturedAt,
+      },
+    });
+  };
 
   const onSubmit = handleSubmit(async (values) => {
     setSubmitState({ kind: "saving" });
@@ -170,6 +285,8 @@ export function DraftApplicationRecordForm() {
       windSpeed: values.windSpeed || "",
       windDirection: values.windDirection || "",
       weatherNotes: values.weatherNotes || undefined,
+      weatherSnapshot:
+        captureState.kind === "captured" ? captureState.snapshot : undefined,
 
       attestationConfirmed: values.attestationConfirmed,
     };
@@ -183,6 +300,7 @@ export function DraftApplicationRecordForm() {
         DEMO_APPLICATOR_ACTOR
       );
       setSubmitState({ kind: "saved", recordId: draft.id });
+      setCaptureState({ kind: "idle" });
       reset();
     } catch (err) {
       setSubmitState({
@@ -349,19 +467,52 @@ export function DraftApplicationRecordForm() {
       </SectionPaper>
 
       <SectionPaper title="Conditions">
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+          <Button
+            type="button"
+            variant="outlined"
+            size="small"
+            onClick={onCaptureWeather}
+            disabled={captureState.kind === "capturing"}
+          >
+            {captureState.kind === "capturing"
+              ? "Capturing…"
+              : "Capture from NWS"}
+          </Button>
+          {captureState.kind === "captured" && (
+            <Chip
+              size="small"
+              color="success"
+              data-testid="weather-provenance-chip"
+              label={
+                captureState.snapshot.stationId
+                  ? `From ${captureState.snapshot.stationId} (${captureState.snapshot.source})`
+                  : `From ${captureState.snapshot.source}`
+              }
+            />
+          )}
+        </Stack>
+        {captureState.kind === "failed" && (
+          <Alert severity="warning" data-testid="weather-capture-alert">
+            {captureState.reason}
+          </Alert>
+        )}
         <TextField
           label="Temperature"
           placeholder="e.g. 72F"
+          slotProps={{ inputLabel: { shrink: true } }}
           {...register("temperature")}
         />
         <TextField
           label="Wind speed"
           placeholder="e.g. 5 mph"
+          slotProps={{ inputLabel: { shrink: true } }}
           {...register("windSpeed")}
         />
         <TextField
           label="Wind direction"
           placeholder="e.g. S"
+          slotProps={{ inputLabel: { shrink: true } }}
           {...register("windDirection")}
         />
         <TextField

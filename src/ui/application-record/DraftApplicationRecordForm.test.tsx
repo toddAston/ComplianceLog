@@ -1,10 +1,44 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../../App";
 import { db } from "../../db/fieldlogDb";
 import { seedDemoData } from "../../db/seed";
 import { DraftApplicationRecordForm } from "./DraftApplicationRecordForm";
+import type {
+  WeatherFetchResult,
+  WeatherService,
+} from "../../application/weatherService";
+import type { GeolocationResult } from "../../application/geolocation";
+
+function fakeWeatherService(result: WeatherFetchResult): WeatherService {
+  return {
+    fetchCurrent: vi.fn(async () => result),
+  };
+}
+
+function fakeGeolocator(result: GeolocationResult) {
+  return vi.fn(async () => result);
+}
+
+const okGeo: GeolocationResult = {
+  kind: "ok",
+  coordinate: { latitude: 37.2, longitude: -89.7 },
+};
+
+const okWeather: WeatherFetchResult = {
+  kind: "ok",
+  reading: {
+    source: "nws_observation",
+    stationId: "KSGF",
+    observedAt: "2026-05-19T12:00:00+00:00",
+    capturedAt: "2026-05-19T12:00:30.000Z",
+    temperatureF: 71.96,
+    windSpeedMph: 3.36,
+    windDirection: "S",
+    windDirectionDegrees: 180,
+  },
+};
 
 beforeEach(async () => {
   await Promise.all(db.tables.map((t) => t.clear()));
@@ -155,6 +189,181 @@ describe("DraftApplicationRecordForm", () => {
     expect(
       (screen.getByLabelText("Crop or site") as HTMLInputElement).value
     ).toBe("");
+  });
+});
+
+describe("DraftApplicationRecordForm weather capture", () => {
+  it("populates temperature, wind speed, and wind direction from a successful NWS reading", async () => {
+    const user = userEvent.setup();
+    render(
+      <DraftApplicationRecordForm
+        weatherService={fakeWeatherService(okWeather)}
+        getCoordinate={fakeGeolocator(okGeo)}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /capture from nws/i })
+    );
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("Temperature") as HTMLInputElement).value
+      ).toBe("72F");
+    });
+    expect(
+      (screen.getByLabelText("Wind speed") as HTMLInputElement).value
+    ).toBe("3.4 mph");
+    expect(
+      (screen.getByLabelText("Wind direction") as HTMLInputElement).value
+    ).toBe("S");
+    expect(
+      screen.getByTestId("weather-provenance-chip").textContent
+    ).toMatch(/KSGF/);
+  });
+
+  it("persists a weatherSnapshot on the draft after capture + save", async () => {
+    const user = userEvent.setup();
+    render(
+      <DraftApplicationRecordForm
+        weatherService={fakeWeatherService(okWeather)}
+        getCoordinate={fakeGeolocator(okGeo)}
+      />
+    );
+
+    await screen.findByRole("option", {
+      name: /John Smith.*Smith Spray Services/,
+    });
+
+    await user.selectOptions(
+      screen.getByLabelText("Organization"),
+      "org-demo-semofarms"
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Applicator"),
+      "applicator-john-smith"
+    );
+    await user.selectOptions(screen.getByLabelText("Farm"), "farm-north");
+    await user.selectOptions(screen.getByLabelText("Field"), "field-7");
+    await user.selectOptions(
+      screen.getByLabelText("Product"),
+      "product-example-herbicide-4l"
+    );
+    await user.type(screen.getByLabelText("Crop or site"), "Soybeans");
+    await user.type(screen.getByLabelText("Acres treated"), "42.5");
+    await user.type(screen.getByLabelText("Application date"), "2026-05-19");
+    await user.type(screen.getByLabelText("Start time"), "08:00");
+    await user.type(
+      screen.getByLabelText("Application method"),
+      "Ground broadcast"
+    );
+    await user.type(screen.getByLabelText("Rate applied"), "1 qt/ac");
+    await user.type(screen.getByLabelText("Total amount applied"), "10 gal");
+
+    await user.click(
+      screen.getByRole("button", { name: /capture from nws/i })
+    );
+    await screen.findByTestId("weather-provenance-chip");
+
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
+
+    await waitFor(async () => {
+      expect(await db.applicationRecords.count()).toBe(1);
+    });
+    const [record] = await db.applicationRecords.toArray();
+    expect(record.contractorInputs.weatherSnapshot).toEqual({
+      source: "nws_observation",
+      stationId: "KSGF",
+      observedAt: "2026-05-19T12:00:00+00:00",
+      capturedAt: "2026-05-19T12:00:30.000Z",
+    });
+  });
+
+  it("does not block submit when geolocation permission is denied (manual override)", async () => {
+    const user = userEvent.setup();
+    const geolocator = fakeGeolocator({ kind: "permission_denied" });
+    const weather = fakeWeatherService(okWeather);
+    render(
+      <DraftApplicationRecordForm
+        weatherService={weather}
+        getCoordinate={geolocator}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /capture from nws/i })
+    );
+
+    const alert = await screen.findByTestId("weather-capture-alert");
+    expect(alert.textContent).toMatch(/permission denied/i);
+    expect(weather.fetchCurrent).not.toHaveBeenCalled();
+
+    expect(
+      (screen.getByLabelText("Temperature") as HTMLInputElement).disabled
+    ).toBe(false);
+  });
+
+  it("falls back to manual entry on weather timeout and surfaces a banner without throwing", async () => {
+    const user = userEvent.setup();
+    render(
+      <DraftApplicationRecordForm
+        weatherService={fakeWeatherService({ kind: "timeout" })}
+        getCoordinate={fakeGeolocator(okGeo)}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /capture from nws/i })
+    );
+
+    const alert = await screen.findByTestId("weather-capture-alert");
+    expect(alert.textContent).toMatch(/timed out/i);
+  });
+
+  it("does not save a weatherSnapshot when capture was never triggered", async () => {
+    const user = userEvent.setup();
+    render(<DraftApplicationRecordForm />);
+
+    await screen.findByRole("option", {
+      name: /John Smith.*Smith Spray Services/,
+    });
+
+    await user.selectOptions(
+      screen.getByLabelText("Organization"),
+      "org-demo-semofarms"
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Applicator"),
+      "applicator-john-smith"
+    );
+    await user.selectOptions(screen.getByLabelText("Farm"), "farm-north");
+    await user.selectOptions(screen.getByLabelText("Field"), "field-7");
+    await user.selectOptions(
+      screen.getByLabelText("Product"),
+      "product-example-herbicide-4l"
+    );
+    await user.type(screen.getByLabelText("Crop or site"), "Soybeans");
+    await user.type(screen.getByLabelText("Acres treated"), "42.5");
+    await user.type(screen.getByLabelText("Application date"), "2026-05-19");
+    await user.type(screen.getByLabelText("Start time"), "08:00");
+    await user.type(
+      screen.getByLabelText("Application method"),
+      "Ground broadcast"
+    );
+    await user.type(screen.getByLabelText("Rate applied"), "1 qt/ac");
+    await user.type(screen.getByLabelText("Total amount applied"), "10 gal");
+    await user.type(screen.getByLabelText("Temperature"), "72F");
+    await user.type(screen.getByLabelText("Wind speed"), "5 mph");
+    await user.type(screen.getByLabelText("Wind direction"), "S");
+
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
+
+    await waitFor(async () => {
+      expect(await db.applicationRecords.count()).toBe(1);
+    });
+    const [record] = await db.applicationRecords.toArray();
+    expect(record.contractorInputs.weatherSnapshot).toBeUndefined();
+    expect(record.contractorInputs.temperature).toBe("72F");
   });
 });
 

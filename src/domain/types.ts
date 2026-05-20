@@ -18,6 +18,7 @@ import {
   systemCapturedFieldsSchema,
   userRoleSchema,
   userSchema,
+  weatherSnapshotSchema,
   workflowStatusSchema,
 } from "./schemas";
 
@@ -46,3 +47,4 @@ export type SystemCapturedFields = z.infer<typeof systemCapturedFieldsSchema>;
 export type ApplicationRecord = z.infer<typeof applicationRecordSchema>;
 export type ApplicationReview = z.infer<typeof applicationReviewSchema>;
 export type ApplicationRecordEvent = z.infer<typeof applicationRecordEventSchema>;
+export type WeatherSnapshot = z.infer<typeof weatherSnapshotSchema>;
