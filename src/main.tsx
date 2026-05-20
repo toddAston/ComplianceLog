@@ -5,10 +5,11 @@ import CssBaseline from "@mui/material/CssBaseline";
 import "./index.css";
 import App from "./App.tsx";
 import { seedDemoData } from "./db/seed";
+import { seedMoCatalog } from "./catalog/seedMoCatalog";
 import { registerFieldLogSW } from "./pwa/registerSW";
 import { fieldlogTheme } from "./ui/theme";
 
-seedDemoData().finally(() => {
+Promise.all([seedDemoData(), seedMoCatalog()]).finally(() => {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <ThemeProvider theme={fieldlogTheme}>
