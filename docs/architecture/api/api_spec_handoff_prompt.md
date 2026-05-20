@@ -47,6 +47,7 @@ These are not negotiable. Echo them back at the top of your spec.
 12. **Product Snapshot is frozen at submit.** The snapshot row is written in the same transaction as the `draft → submitted` transition and is never updated thereafter.
 13. **Tenant isolation.** Every row belongs to an `organizationId`. Every query filters by the caller's org. Cross-tenant access is an auth bug, not a feature.
 14. **Flatten known fields, `jsonb` only for open-ended bags.** Every field with a fixed shape in `src/domain/schemas.ts` becomes a real Postgres column with real types, constraints, and indexes — `workflow_status`, `sync_status`, `organization_id`, `application_date` (`date`), `epa_registration_number` (`text` with a CHECK), `rup_status` (enum), `acres_treated` (`numeric`), `created_at` (`timestamptz`), etc. Reserve `jsonb` for genuinely open-ended payloads: `record_events.metadata`, `contractor_inputs.weather_snapshot` (third-party shape may evolve), future audit context. Do not store an entire application record as one `jsonb` blob — the law cares about specific fields and the database should too. Where a `jsonb` column has a stable shape internally (e.g., `weather_snapshot`), add a CHECK constraint with `jsonb_typeof` or a Zod-validated insert path, and document the contract.
+15. **Containerized deployment is a first-class requirement.** The API ships as an OCI container image. The repo must produce a production-grade `Dockerfile` and a `docker-compose.yml` for local development (API + Postgres + Redis). The image must: run as a non-root user, have no secrets baked in (every secret is read from env at startup), log to stdout/stderr in JSON (no log files inside the container), expose a `/healthz` liveness endpoint and a `/readyz` readiness endpoint that actually probes Postgres and Redis, handle `SIGTERM` for graceful shutdown (drain in-flight requests, close DB pool, close Redis pool), and start in under 5 seconds on a cold container. The image must be reproducible — pinned base image digest, no `apt-get update` without a pinned package list, no `:latest` tags anywhere.
 
 ## Deliverables
 
@@ -66,7 +67,7 @@ A single, lint-clean OpenAPI 3.1 file covering every endpoint. Requirements:
 
 Sections, in order:
 
-1. **Stack details.** The stack is fixed: **Node 22+ LTS / TypeScript / Fastify / Drizzle ORM / Postgres 16+ / BullMQ on Redis** for background jobs. Your job in this section is not to re-pick the stack; it's to (a) explain how Drizzle schemas are derived from or co-defined with the existing Zod schemas (recommend `drizzle-zod` for schema → Zod inference, or a hand-written mapping if Zod stays canonical — pick one and justify), (b) describe the project layout (`/src/domain` shared with the client? a private npm package? a monorepo?), (c) list the production dependencies with pinned major versions, and (d) name the hosting target (Fly.io / Railway / AWS ECS / GCP Cloud Run — pick the simplest one that meets the rate-limiting + Redis + Postgres requirements and justify in one paragraph).
+1. **Stack details.** The stack is fixed: **Node 22+ LTS / TypeScript / Fastify / Drizzle ORM / Postgres 16+ / BullMQ on Redis** for background jobs, shipped as **an OCI container image**. Your job in this section is not to re-pick the stack; it's to (a) explain how Drizzle schemas are derived from or co-defined with the existing Zod schemas (recommend `drizzle-zod` for schema → Zod inference, or a hand-written mapping if Zod stays canonical — pick one and justify), (b) describe the project layout (`/src/domain` shared with the client? a private npm package? a monorepo?), (c) list the production dependencies with pinned major versions, and (d) name the hosting target. Because the artifact is a container, any platform that runs OCI images works — pick the simplest one that gives you managed Postgres + managed Redis + horizontal scaling out of the box (Fly.io, Railway, AWS ECS/Fargate, GCP Cloud Run, or plain Kubernetes). Justify in one paragraph against operational burden, cold-start latency for the readiness probe, and the cost of one small + one DB + one Redis instance for a v1 deployment.
 2. **Authentication & session model.** Cookie session vs. JWT vs. opaque bearer token. Refresh-token rotation, revocation list, multi-device behavior, "remember me" semantics, MFA roadmap (does v1 ship with TOTP, or just a hook for it?). Document the password reset flow end-to-end including rate limits and token expiry.
 3. **Authorization model.** Roles (`applicator`, `manager`, future `org_admin`?), scopes, ownership rules (a contractor can only submit records they created; a manager can review any record in their org; what about cross-org auditors?). Express as a decision table, not prose.
 4. **Resource map.** One row per Dexie table, mapped to one or more REST resources. Note any resources that are server-only (e.g., audit log access for managers, system-wide product catalog updates).
@@ -82,8 +83,9 @@ Sections, in order:
 9. **File export.** Locked records can be exported as PDF (`applicationRecordPdf.ts` exists client-side). Server endpoint should: (a) accept an export request, (b) enqueue a background job, (c) return a job id + polling URL or signed download URL with TTL, (d) emit an `exported` event on completion. Do not stream the PDF synchronously.
 10. **Error model.** Full table of error codes (`AUTH_REQUIRED`, `FORBIDDEN`, `RECORD_LOCKED`, `STATUS_TRANSITION_INVALID`, `IDEMPOTENCY_CONFLICT`, `VALIDATION_FAILED`, `RATE_LIMITED`, `CONFLICT_STALE_RECORD`, etc.) mapped to HTTP status codes, when they fire, what the client should do, and what (if anything) gets logged.
 11. **Observability.** Structured logging (JSON, with `requestId`, `userId`, `orgId`, `recordId` where applicable), metrics surface (RED method: rate / errors / duration per endpoint), audit log for security-sensitive actions (login, role change, lock, export). Specify retention.
-12. **Deployment & secrets.** `.env.example` contents for the server. Where secrets live in prod (AWS Secrets Manager / Vault / GCP Secret Manager). Rotation policy.
-13. **Open questions.** Any decision you couldn't make without a product call — list them explicitly so the next reviewer can answer.
+12. **Deployment & secrets.** `.env.example` contents for the server. Where secrets live in prod (AWS Secrets Manager / Vault / GCP Secret Manager / platform-native — pick one consistent with the hosting target). Rotation policy. How the container picks up rotated secrets (restart, sidecar reload, etc.).
+13. **Containerization & runtime.** Cover, in this order: (a) the multi-stage `Dockerfile` strategy (builder stage produces a pruned `node_modules`, runtime stage runs as non-root on a `distroless` or `gcr.io/distroless/nodejs22-debian12` base — justify the base image choice); (b) how migrations run on deploy — a separate one-shot container running `drizzle-kit migrate` before the API container starts is the recommended pattern, not running migrations in the API process's startup hook (justify if you deviate); (c) the `/healthz` and `/readyz` contract — what each probes, what response codes they return, and what timeouts the orchestrator should use; (d) graceful-shutdown behavior on `SIGTERM` (request drain timeout, DB pool close, Redis close, in-flight BullMQ worker behavior); (e) the image tag & registry strategy (semver tags + git SHA tags, no `:latest` in production manifests, which registry); (f) image-scan + SBOM expectations (Trivy / Grype / Snyk in CI, failing the build on `HIGH` or `CRITICAL` CVEs in dependencies or base image).
+14. **Open questions.** Any decision you couldn't make without a product call — list them explicitly so the next reviewer can answer.
 
 ### 3. `migrations/0001_initial_schema.sql` (and a `down` counterpart)
 
@@ -112,6 +114,28 @@ What the existing React/Dexie client has to change to talk to this API. Short, p
 - Which Zod schemas need a server-shape variant (e.g., adding `serverId`, `etag`, `createdByUserId` fields).
 - Sync flush function: where it lives, when it runs (online detect, manual trigger, periodic), how it handles partial failure.
 - How the demo session/role context is replaced with real auth.
+
+### 6. Container artifacts — `Dockerfile`, `docker-compose.yml`, `.dockerignore`, `docker/README.md`
+
+Produce a working set of container files for the API. They go under a `docker/` directory in the server repo (or the repo root for the `Dockerfile` itself — pick one and document it). Concretely:
+
+- **`Dockerfile`** — multi-stage:
+  - Stage 1 (`deps`): `node:22-bookworm-slim` pinned by digest, installs only production dependencies via `npm ci --omit=dev`.
+  - Stage 2 (`build`): same base, installs full deps, runs `tsc` (or your build tool) to emit `dist/`.
+  - Stage 3 (`runtime`): `gcr.io/distroless/nodejs22-debian12` pinned by digest, copies `node_modules` from `deps` and `dist/` from `build`, sets `USER nonroot`, `EXPOSE 8080`, `ENTRYPOINT ["node", "dist/server.js"]`.
+  - No `apt-get`, no shell in the final image, no build tools in the final image.
+  - `HEALTHCHECK` instruction calling `/healthz` (if the orchestrator uses Docker-level health checks; otherwise document that Kubernetes/Cloud Run probes replace it).
+- **`docker-compose.yml`** — local dev only, never used in production:
+  - `api` service built from the local `Dockerfile`, with code mounted only in dev mode (override file) so the production image stays clean.
+  - `postgres:16` service with a named volume, healthcheck, `POSTGRES_PASSWORD` from `.env` (not hardcoded).
+  - `redis:7-alpine` service with a healthcheck.
+  - `migrate` one-shot service that depends on `postgres` healthy and runs `drizzle-kit migrate`, then exits.
+  - `api` depends on `migrate` completing and `redis` healthy.
+  - Network is the default compose network; no published ports for Postgres/Redis except via opt-in override file.
+- **`.dockerignore`** — at minimum: `node_modules`, `.git`, `dist`, `coverage`, `.env*` (never bake env files into the image), `*.md` except `package.json`, `reference/vendor-docs/`, `docs/`, `research/`, `data/`.
+- **`docker/README.md`** — step-by-step "how to run locally" (one paragraph), "how the production image differs from compose" (one paragraph), and the full list of environment variables the container reads at startup (referencing the server `.env.example` as the canonical list).
+
+Also include in this section: the **CI workflow snippet** (GitHub Actions YAML, or whichever runner the team uses) that builds the image on every push to `main`, runs the image scanner (Trivy is the easy default), tags it with both the git SHA and the semver from `package.json`, and pushes to the chosen registry. The workflow must fail on `HIGH` or `CRITICAL` CVEs and must not push an image that hasn't passed the scan.
 
 ## Style Rules
 
