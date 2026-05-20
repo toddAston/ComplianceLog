@@ -16,12 +16,19 @@ import {
 } from "./db/queries";
 import { DraftApplicationRecordForm } from "./ui/application-record/DraftApplicationRecordForm";
 import { DraftsList } from "./ui/application-record/DraftsList";
+import { ReviewQueue } from "./ui/application-record/ReviewQueue";
 import { ContractorManager } from "./ui/contractor/ContractorManager";
 import { FarmManager } from "./ui/farm/FarmManager";
 import { OfflineBadge } from "./ui/system/OfflineBadge";
+import {
+  SessionProvider,
+  useSessionRole,
+} from "./ui/session/SessionContext";
+import { RoleToggle } from "./ui/session/RoleToggle";
 import { DEMO_ORG_ID } from "./db/seed";
 
-function App() {
+function AppShell() {
+  const role = useSessionRole();
   const organizations = useAllOrganizations();
   const farms = useAllFarms();
   const fields = useAllFields();
@@ -33,43 +40,71 @@ function App() {
     <Container component="main" maxWidth="md" sx={{ py: 3 }}>
       <Stack spacing={3}>
         <Box>
-          <Typography variant="h4" component="h1" gutterBottom>
-            FieldLog
-          </Typography>
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 1,
+            }}
+          >
+            <Typography variant="h4" component="h1" gutterBottom>
+              FieldLog
+            </Typography>
+            <RoleToggle />
+          </Stack>
           <OfflineBadge />
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Offline-first pesticide application recordkeeping. Contractor draft
-            capture, submit, and manager review/lock are wired.
+            Offline-first pesticide application recordkeeping. Switch the demo
+            role to see the contractor or manager view.
           </Typography>
         </Box>
 
-        <Box>
-          <Typography variant="h6" component="h2" gutterBottom>
-            New application record (draft)
-          </Typography>
-          <DraftApplicationRecordForm />
-        </Box>
+        {role === "contractor" && (
+          <>
+            <Box data-testid="contractor-view">
+              <Typography variant="h6" component="h2" gutterBottom>
+                New application record (draft)
+              </Typography>
+              <DraftApplicationRecordForm />
+            </Box>
 
-        <Box>
-          <Typography variant="h6" component="h2" gutterBottom>
-            Records ({applicationRecords.length})
-          </Typography>
-          <DraftsList />
-        </Box>
+            <Box>
+              <Typography variant="h6" component="h2" gutterBottom>
+                Records ({applicationRecords.length})
+              </Typography>
+              <DraftsList />
+            </Box>
+          </>
+        )}
 
-        <Box>
-          <Typography variant="h6" component="h2" gutterBottom>
-            Manage farms
-          </Typography>
-          <FarmManager organizationId={DEMO_ORG_ID} />
-        </Box>
+        {role === "manager" && (
+          <Box data-testid="manager-view">
+            <Typography variant="h6" component="h2" gutterBottom>
+              Review queue
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Submitted records waiting on manager review or correction.
+            </Typography>
+            <ReviewQueue />
 
-        <Box>
-          <Typography variant="h6" component="h2" gutterBottom>
-            Manage contractors
-          </Typography>
-          <ContractorManager organizationId={DEMO_ORG_ID} />
-        </Box>
+            <Divider sx={{ my: 3 }} />
+
+            <Typography variant="h6" component="h2" gutterBottom>
+              Manage farms
+            </Typography>
+            <FarmManager organizationId={DEMO_ORG_ID} />
+
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="h6" component="h2" gutterBottom>
+                Manage contractors
+              </Typography>
+              <ContractorManager organizationId={DEMO_ORG_ID} />
+            </Box>
+          </Box>
+        )}
 
         <Divider />
 
@@ -162,6 +197,14 @@ function App() {
         </Box>
       </Stack>
     </Container>
+  );
+}
+
+function App() {
+  return (
+    <SessionProvider>
+      <AppShell />
+    </SessionProvider>
   );
 }
 

@@ -21,6 +21,7 @@ import {
 import { runComplianceChecks } from "../../application/complianceRules";
 import type { ApplicationRecord } from "../../domain/types";
 import { DEMO_APPLICATOR_ACTOR, DEMO_MANAGER_ACTOR } from "../demoSession";
+import { useSessionRole } from "../session/SessionContext";
 import { RecordDetailDialog } from "./RecordDetailDialog";
 
 type RowState =
@@ -80,6 +81,8 @@ function syncChipColor(
 }
 
 export function DraftsList() {
+  const role = useSessionRole();
+  const showManagerAffordances = role === "manager";
   const records = useAllApplicationRecords();
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
@@ -362,7 +365,7 @@ export function DraftsList() {
                     </Stack>
                   )}
 
-                  {isPendingReview && (
+                  {isPendingReview && showManagerAffordances && (
                     <Stack spacing={1.5}>
                       <Stack
                         direction="row"
