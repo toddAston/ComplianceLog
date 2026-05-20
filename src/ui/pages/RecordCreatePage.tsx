@@ -1,16 +1,27 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { StepperLayout } from "../layout/StepperLayout";
-import { useAllFarms, useAllFields, useAllProducts } from "../../db/queries";
+import {
+  useAllApplicators,
+  useAllFarms,
+  useAllFields,
+  useAllProducts,
+} from "../../db/queries";
+import { createDraftApplicationRecord } from "../../application/applicationRecordService";
+import { useSession } from "../session/SessionContext";
+import { DEMO_ORG_ID } from "../../db/seed";
+import type { ContractorInputs } from "../../domain/types";
 
 const STEP_LABELS = ["Farm & Field", "Product", "Application Details", "Weather", "Review & Attest"];
 
 export function RecordCreatePage() {
   const navigate = useNavigate();
+  const { actor } = useSession();
   const [step, setStep] = useState(0);
   const farms = useAllFarms();
   const fields = useAllFields();
   const products = useAllProducts();
+  const applicators = useAllApplicators();
 
   // Form state
   const [farmId, setFarmId] = useState("");
@@ -27,26 +38,123 @@ export function RecordCreatePage() {
   const [weatherWind, setWeatherWind] = useState("");
   const [weatherWindDir, setWeatherWindDir] = useState("");
   const [attested, setAttested] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const handleNext = () => {
-    if (step < 4) setStep(step + 1);
-    else {
-      // Submit - navigate back
+  const selectedProduct = products.find((p) => p.id === productId);
+  const selectedFarm = farms.find((f) => f.id === farmId);
+  const selectedField = fields.find((f) => f.id === fieldId);
+
+  const canSaveDraft = Boolean(farmId && fieldId && productId);
+
+  const handleSaveDraft = async () => {
+    setSaveError(null);
+    if (!canSaveDraft || !selectedFarm || !selectedField || !selectedProduct) {
+      setSaveError("Select a farm, field, and product before saving.");
+      return;
+    }
+    const applicator = applicators[0];
+    const contractorInputs: ContractorInputs = {
+      applicatorId: applicator?.id ?? actor.userId,
+      applicatorName: applicator?.applicatorName ?? actor.displayName,
+      company: applicator?.contractorCompanyName ?? "",
+      certificationNumber: applicator?.certificationNumber,
+
+      farmId: selectedFarm.id,
+      farmName: selectedFarm.name,
+      fieldId: selectedField.id,
+      fieldName: selectedField.name,
+      cropOrSite: selectedField.defaultCropOrSite ?? "",
+      acresTreated: acresTreated || String(selectedField.defaultAcres ?? ""),
+
+      productId: selectedProduct.id,
+      productName: selectedProduct.name,
+      epaRegistrationNumber: selectedProduct.epaRegistrationNumber,
+      rupStatus: selectedProduct.rupStatus,
+      catalogVersion: selectedProduct.catalogVersion,
+
+      applicationDate: dateApplied,
+      startTime: timeStart,
+      endTime: timeEnd || undefined,
+      applicationMethod: "",
+      rateApplied: ratePerAcre,
+      totalAmountApplied: totalAmount,
+      targetPest: pestTarget || undefined,
+
+      temperature: weatherTemp,
+      windSpeed: weatherWind,
+      windDirection: weatherWindDir,
+
+      attestationConfirmed: attested,
+    };
+    setSaving(true);
+    try {
+      await createDraftApplicationRecord(
+        { organizationId: DEMO_ORG_ID, contractorInputs },
+        actor
+      );
       navigate("/records");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Unknown error.");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const selectedProduct = products.find((p) => p.id === productId);
+  const handleNext = () => {
+    if (step < 4) setStep(step + 1);
+    else handleSaveDraft();
+  };
 
   return (
+    <>
+      <div
+        style={{
+          maxWidth: 520,
+          margin: "0 auto",
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          gap: 12,
+          padding: "8px 0 0",
+        }}
+      >
+        {saveError && (
+          <span
+            role="alert"
+            style={{ fontSize: 12, color: "var(--color-error)" }}
+          >
+            {saveError}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={handleSaveDraft}
+          disabled={!canSaveDraft || saving}
+          style={{
+            height: 36,
+            padding: "0 14px",
+            backgroundColor:
+              !canSaveDraft || saving ? "#c8c8c8" : "var(--color-primary)",
+            color: !canSaveDraft || saving ? "#646464" : "#ffffff",
+            border: "none",
+            borderRadius: 6,
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: !canSaveDraft || saving ? "not-allowed" : "pointer",
+          }}
+        >
+          {saving ? "Saving…" : "Save Draft"}
+        </button>
+      </div>
     <StepperLayout
       currentStep={step}
       totalSteps={5}
       stepLabels={STEP_LABELS}
       onBack={() => setStep(step - 1)}
       onNext={handleNext}
-      nextLabel={step === 4 ? "Submit Record" : "Next"}
-      nextDisabled={step === 4 && !attested}
+      nextLabel={step === 4 ? "Save Draft" : "Next"}
+      nextDisabled={step === 4 ? !attested || !canSaveDraft || saving : false}
     >
       {/* Step 1: Farm & Field */}
       {step === 0 && (
@@ -218,17 +326,18 @@ export function RecordCreatePage() {
         </div>
       )}
     </StepperLayout>
+    </>
   );
 }
 
 function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <div>
-      <label style={{ display: "block", fontSize: 14, fontWeight: 500, color: "var(--color-text)", marginBottom: 4 }}>
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text)", marginBottom: 4 }}>
         {label} {required && <span style={{ color: "var(--color-error)" }}>*</span>}
-      </label>
+      </div>
       {children}
-    </div>
+    </label>
   );
 }
 

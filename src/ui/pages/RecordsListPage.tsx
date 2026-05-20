@@ -26,7 +26,9 @@ export function RecordsListPage() {
   return (
     <div style={{ maxWidth: 800, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700 }}>Records</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 700 }}>
+          Records ({filteredRecords.length})
+        </h1>
         <Link to="/records/new" style={{ textDecoration: "none" }}>
           <button style={{
             height: 40,
@@ -135,18 +137,32 @@ export function RecordsListPage() {
                       </div>
                     )}
                   </div>
-                  <span style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    padding: "4px 10px",
-                    borderRadius: 9999,
-                    backgroundColor: colors.bg,
-                    color: colors.text,
-                    whiteSpace: "nowrap",
-                    textTransform: "capitalize",
-                  }}>
-                    {record.workflowStatus.replace("_", " ")}
-                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      padding: "4px 10px",
+                      borderRadius: 9999,
+                      backgroundColor: colors.bg,
+                      color: colors.text,
+                      whiteSpace: "nowrap",
+                      textTransform: "capitalize",
+                    }}>
+                      {record.workflowStatus.replace("_", " ")}
+                    </span>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 500,
+                      padding: "2px 8px",
+                      borderRadius: 9999,
+                      backgroundColor: "transparent",
+                      color: "var(--color-text-secondary)",
+                      border: "1px solid var(--color-border)",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {record.syncStatus}
+                    </span>
+                  </div>
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e8e8e8", fontSize: 12, color: "var(--color-text-secondary)" }}>
                   {record.workflowStatus === "draft" && (

@@ -372,37 +372,68 @@ describe("DraftApplicationRecordForm weather capture", () => {
   });
 });
 
-describe("App + DraftApplicationRecordForm integration", () => {
-  it("new draft appears in the Drafts list after save", async () => {
+describe("App + RecordCreatePage integration", () => {
+  beforeEach(() => {
+    window.history.pushState({}, "", "/records/new");
+  });
+
+  async function fillStepperDraft() {
+    const user = userEvent.setup();
+    const farmSelect = (await screen.findByLabelText(/Farm/i)) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(
+        Array.from(farmSelect.options).some((o) => o.value === "farm-north")
+      ).toBe(true);
+    });
+    await user.selectOptions(farmSelect, "farm-north");
+    const fieldSelect = screen.getByLabelText(/Field/i) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(
+        Array.from(fieldSelect.options).some((o) => o.value === "field-7")
+      ).toBe(true);
+    });
+    await user.selectOptions(fieldSelect, "field-7");
+
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+    const productSelect = (await screen.findByLabelText(/Product/i)) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(
+        Array.from(productSelect.options).some(
+          (o) => o.value === "product-example-herbicide-4l"
+        )
+      ).toBe(true);
+    });
+    await user.selectOptions(productSelect, "product-example-herbicide-4l");
+    return user;
+  }
+
+  it("a draft saved through the stepper appears in the records list", async () => {
     render(<App />);
 
-    expect(
-      await screen.findByRole("heading", { level: 2, name: /Records \(0\)/ })
-    ).toBeTruthy();
-
-    const user = await fillValidDraft();
-    await user.click(screen.getByRole("button", { name: /save draft/i }));
+    const user = await fillStepperDraft();
+    await user.click(screen.getByRole("button", { name: /Save Draft/i }));
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: /Records \(1\)/ })
+      await screen.findByRole("heading", { level: 1, name: /Records \(1\)/ })
     ).toBeTruthy();
     expect(await screen.findByText("draft")).toBeTruthy();
     expect(await screen.findByText("local_only")).toBeTruthy();
   });
 
-  it("submitted draft persists across a remount (refresh)", async () => {
+  it("a saved draft persists across a remount (refresh)", async () => {
     const first = render(<App />);
 
-    const user = await fillValidDraft();
-    await user.click(screen.getByRole("button", { name: /save draft/i }));
-    await screen.findByRole("heading", { level: 2, name: /Records \(1\)/ });
+    const user = await fillStepperDraft();
+    await user.click(screen.getByRole("button", { name: /Save Draft/i }));
+    await screen.findByRole("heading", { level: 1, name: /Records \(1\)/ });
 
     first.unmount();
 
+    window.history.pushState({}, "", "/records");
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: /Records \(1\)/ })
+      await screen.findByRole("heading", { level: 1, name: /Records \(1\)/ })
     ).toBeTruthy();
     expect(await screen.findByText("draft")).toBeTruthy();
     expect(await screen.findByText("local_only")).toBeTruthy();
