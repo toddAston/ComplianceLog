@@ -1,6 +1,8 @@
 # Build context is the repository root (server/Dockerfile). Keep the image small
 # and free of secrets, docs, research data, and the client's build artifacts.
 .git
+.github
+.claude
 **/node_modules
 **/dist
 **/coverage
@@ -15,9 +17,20 @@ research/
 data/
 reference/
 public/
+scripts/
 junitReportDirectory*
 *.md
+*.excalidraw
+*.pdf
+*.xlsx
+*.zip
 !server/package.json
+!server/package-lock.json
+
+# Test files — tsup bundles only what server entrypoints import, so tests just
+# bloat the build context.
+**/*.test.ts
+**/*.test.tsx
 
 # Client-only build/config files (the server bundles only src/domain + src/application).
 index.html
@@ -25,4 +38,3 @@ vite.config.ts
 eslint.config.js
 tsconfig.app.json
 tsconfig.node.json
-Scrath.excalidraw

@@ -13,16 +13,14 @@
 # ---- deps: pruned production node_modules (shipped to runtime) ----
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
-COPY server/package.json ./
-# `npm ci` is preferred once server/package-lock.json is committed; `npm install`
-# keeps a lockfile-less fresh checkout buildable.
-RUN npm install --omit=dev --no-audit --no-fund
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
 
 # ---- build: compile/bundle to dist/server.js ----
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
-COPY server/package.json ./
-RUN npm install --no-audit --no-fund
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY server/ ./
 # Client sources live at /src so the server's `../src/domain` imports resolve.
 COPY src/ /src/
