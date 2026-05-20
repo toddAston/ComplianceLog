@@ -11,6 +11,7 @@ import {
   runAllComplianceChecks,
   type ComplianceCheckOutcome,
 } from "./complianceRules";
+import { buildOutboxOp } from "./sync/outbox";
 
 function summarizeOutcomes(outcomes: ComplianceCheckOutcome[]): string {
   const counts = { pass: 0, fail: 0, unknown: 0 };
@@ -72,9 +73,19 @@ export async function createDraftApplicationRecord(
     "rw",
     db.applicationRecords,
     db.recordEvents,
+    db.outbox,
     async () => {
       await db.applicationRecords.add(draft);
       await db.recordEvents.add(event);
+      // Queue the create so the draft reaches the server on the next flush. The
+      // record was never synced, so there is no baseEtag.
+      await db.outbox.add(
+        buildOutboxOp({
+          recordId: draft.id,
+          kind: "create_draft",
+          payload: draft as unknown as Record<string, unknown>,
+        })
+      );
     }
   );
 
@@ -188,10 +199,18 @@ export async function submitApplicationRecord(
     db.applicationRecords,
     db.productSnapshots,
     db.recordEvents,
+    db.outbox,
     async () => {
       await db.productSnapshots.add(productSnapshot);
       await db.applicationRecords.put(updatedRecord);
       await db.recordEvents.bulkAdd(events);
+      await db.outbox.add(
+        buildOutboxOp({
+          recordId: record.id,
+          kind: "submit",
+          baseEtag: record.etag,
+        })
+      );
     }
   );
 
@@ -441,64 +460,22 @@ export async function resubmitCorrectedApplicationRecord(
     "rw",
     db.applicationRecords,
     db.recordEvents,
+    db.outbox,
     async () => {
       await db.applicationRecords.put(updatedRecord);
       await db.recordEvents.bulkAdd(events);
+      await db.outbox.add(
+        buildOutboxOp({
+          recordId: record.id,
+          kind: "resubmit",
+          baseEtag: record.etag,
+          payload: nonEmptyFields,
+        })
+      );
     }
   );
 
   return updatedRecord;
-}
-
-/**
- * Dev/demo helper: walks every record whose syncStatus is "queued" through
- * syncing → synced, appending a single "synced" record event per record.
- *
- * This is not a real sync — it never talks to a server. It exists so the UI
- * can demonstrate the offline → synced transition without backend wiring.
- */
-export async function simulateSyncAllQueued(
-  actor: ActorContext
-): Promise<{ syncedRecordIds: string[] }> {
-  const queued = await db.applicationRecords
-    .where("syncStatus")
-    .equals("queued")
-    .toArray();
-  const syncedAt = now();
-  const syncedRecordIds: string[] = [];
-
-  await db.transaction(
-    "rw",
-    db.applicationRecords,
-    db.recordEvents,
-    async () => {
-      for (const record of queued) {
-        await db.applicationRecords.put({
-          ...record,
-          syncStatus: "synced",
-          system: {
-            ...record.system,
-            lastUpdatedAt: syncedAt,
-          },
-        });
-        await db.recordEvents.add({
-          id: id(),
-          applicationRecordId: record.id,
-          // Reuse "updated" since the simulated sync is not a domain
-          // transition with its own dedicated event type yet.
-          type: "updated",
-          actorUserId: actor.userId,
-          actorDisplayName: actor.displayName,
-          occurredAt: syncedAt,
-          message: "Sync simulated: queued → synced.",
-          metadata: { syncStatusBefore: "queued", syncStatusAfter: "synced" },
-        });
-        syncedRecordIds.push(record.id);
-      }
-    }
-  );
-
-  return { syncedRecordIds };
 }
 
 export function productToContractorProductFields(product: Product) {

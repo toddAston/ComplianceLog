@@ -4,16 +4,20 @@ import {
   applicationRecordSchema,
   applicationReviewSchema,
   applicatorSchema,
+  catalogMetaSchema,
   contractorInputsSchema,
   farmSchema,
   fieldSiteSchema,
   managerInputsSchema,
   organizationSchema,
+  outboxOperationSchema,
+  outboxStatusSchema,
   productSchema,
   productSnapshotSchema,
   recordEventTypeSchema,
   reviewStatusSchema,
   rupStatusSchema,
+  syncOperationKindSchema,
   syncStatusSchema,
   systemCapturedFieldsSchema,
   userRoleSchema,
@@ -48,3 +52,8 @@ export type ApplicationRecord = z.infer<typeof applicationRecordSchema>;
 export type ApplicationReview = z.infer<typeof applicationReviewSchema>;
 export type ApplicationRecordEvent = z.infer<typeof applicationRecordEventSchema>;
 export type WeatherSnapshot = z.infer<typeof weatherSnapshotSchema>;
+
+export type SyncOperationKind = z.infer<typeof syncOperationKindSchema>;
+export type OutboxStatus = z.infer<typeof outboxStatusSchema>;
+export type OutboxOperation = z.infer<typeof outboxOperationSchema>;
+export type CatalogMeta = z.infer<typeof catalogMetaSchema>;

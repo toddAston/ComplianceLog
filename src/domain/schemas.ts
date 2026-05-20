@@ -186,6 +186,54 @@ export const applicationRecordSchema = z.object({
   productSnapshotId: z.string().optional(),
 
   complianceReviewRequired: z.boolean(),
+
+  // Sync metadata (added when the sync layer landed). All optional so records
+  // created before sync, or never synced, remain valid.
+  // - etag: server concurrency token; absent until first successful sync.
+  // - syncError: last sync failure message surfaced in the UI.
+  // - lastSyncedAt: ISO timestamp of the last confirmed server round-trip.
+  // - serverShadow: the server's copy stashed on a conflict, for rebase.
+  etag: z.string().optional(),
+  syncError: z.string().optional(),
+  lastSyncedAt: z.string().optional(),
+  serverShadow: z.unknown().optional(),
+});
+
+export const syncOperationKindSchema = z.enum([
+  "create_draft",
+  "update_inputs",
+  "submit",
+  "resubmit",
+]);
+
+export const outboxStatusSchema = z.enum([
+  "pending",
+  "inflight",
+  "failed",
+  "done",
+]);
+
+// A queued, replay-safe mutation awaiting flush to the server (loopback or HTTP).
+export const outboxOperationSchema = z.object({
+  opId: z.string(),
+  idempotencyKey: z.string(),
+  recordId: z.string(),
+  kind: syncOperationKindSchema,
+  status: outboxStatusSchema,
+  baseEtag: z.string().optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+  attempts: z.number(),
+  lastError: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+// Local record of which catalog version is cached and when it loaded — drives the
+// offline staleness indicator (Phase 2).
+export const catalogMetaSchema = z.object({
+  catalogVersion: z.string(),
+  loadedAt: z.string(),
+  source: z.string().optional(),
 });
 
 export const applicationReviewSchema = z.object({

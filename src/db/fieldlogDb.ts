@@ -4,9 +4,11 @@ import type {
   ApplicationRecordEvent,
   ApplicationReview,
   Applicator,
+  CatalogMeta,
   Farm,
   FieldSite,
   Organization,
+  OutboxOperation,
   Product,
   ProductSnapshot,
   User,
@@ -25,6 +27,10 @@ export class FieldLogDb extends Dexie {
   productSnapshots!: Table<ProductSnapshot, string>;
   reviews!: Table<ApplicationReview, string>;
   recordEvents!: Table<ApplicationRecordEvent, string>;
+
+  // v2 (sync layer)
+  outbox!: Table<OutboxOperation, string>;
+  catalogMeta!: Table<CatalogMeta, string>;
 
   constructor() {
     super("fieldlog-db");
@@ -47,6 +53,15 @@ export class FieldLogDb extends Dexie {
       reviews: "&id, applicationRecordId, reviewStatus, reviewedAt",
 
       recordEvents: "&id, applicationRecordId, type, occurredAt",
+    });
+
+    // v2 is purely additive: two new stores. The new optional fields on
+    // ApplicationRecord (etag/syncError/lastSyncedAt/serverShadow) need no schema
+    // change because Dexie stores rows as opaque JSON. Existing tables are
+    // inherited unchanged (Dexie merges schema across versions).
+    this.version(2).stores({
+      outbox: "&opId, recordId, status, kind, createdAt",
+      catalogMeta: "&catalogVersion, loadedAt",
     });
   }
 }

@@ -1,19 +1,7 @@
-import { useEffect, useState } from "react";
+import { useOnlineStatus } from "./useOnlineStatus";
 
 export function OfflineBadge() {
-  const [online, setOnline] = useState(
-    typeof navigator === "undefined" ? true : navigator.onLine
-  );
-
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
+  const online = useOnlineStatus();
 
   if (online) return null;
 

@@ -122,8 +122,10 @@ describe("RecordDetailDialog audit timeline", () => {
         within(item).getByTestId(`audit-event-type-${evt.id}`).textContent
       ).toContain(evt.type);
       const time = within(item).getByTestId(`audit-event-time-${evt.id}`);
-      expect(time.closest('[aria-label]')?.getAttribute("aria-label"))
-        .toBe(evt.occurredAt) || expect(time).toBeTruthy();
+      expect(time.closest('[aria-label]')?.getAttribute("aria-label")).toBe(
+        evt.occurredAt
+      );
+      expect(time).toBeTruthy();
     }
   });
 

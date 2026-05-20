@@ -26,7 +26,7 @@ import {
 } from "./ui/session/SessionContext";
 import { RoleToggle } from "./ui/session/RoleToggle";
 import { DEMO_ORG_ID } from "./db/seed";
-import { SimulateSyncButton } from "./ui/system/SimulateSyncButton";
+import { SyncControls } from "./ui/system/SyncControls";
 
 function AppShell() {
   const role = useSessionRole();
@@ -58,7 +58,7 @@ function AppShell() {
           </Stack>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
             <OfflineBadge />
-            <SimulateSyncButton />
+            <SyncControls />
           </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             Offline-first pesticide application recordkeeping. Switch the demo

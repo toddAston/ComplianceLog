@@ -25,6 +25,7 @@ import {
 import { resubmitCorrectedApplicationRecord } from "../../application/applicationRecordService";
 import { DEMO_APPLICATOR_ACTOR } from "../demoSession";
 import { AuditReport } from "./AuditReport";
+import { ConflictBanner } from "../system/ConflictBanner";
 
 type EventChipColor =
   | "default"
@@ -182,6 +183,8 @@ export function RecordDetailDialog({ record, onClose }: Props) {
         </DialogTitle>
 
         <DialogContent dividers>
+          <ConflictBanner record={record} />
+
           {isLocked && (
             <Alert
               severity="success"
