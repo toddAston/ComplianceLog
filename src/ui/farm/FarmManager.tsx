@@ -4,10 +4,13 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
+import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
+import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import AddIcon from "@mui/icons-material/Add";
 import { createFarm, renameFarm } from "../../application/farmService";
 import { useAllFarms } from "../../db/queries";
 import { FieldsForFarm } from "./FieldsForFarm";
@@ -71,28 +74,30 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
     <Stack spacing={2} data-testid="farm-manager">
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="subtitle1" component="h3" sx={{ mb: 1.5 }}>
-            New farm
-          </Typography>
           <Box component="form" onSubmit={onCreate}>
-            <Stack spacing={1.5}>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ alignItems: "flex-start" }}
+            >
               <TextField
-                label="Farm name"
+                label="New farm name"
                 value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
                 error={!!createError}
                 helperText={createError ?? undefined}
                 slotProps={{ htmlInput: { "aria-label": "Farm name" } }}
+                sx={{ flex: 1 }}
               />
-              <Box>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={creating || draftName.trim().length === 0}
-                >
-                  {creating ? "Creating…" : "Create farm"}
-                </Button>
-              </Box>
+              <IconButton
+                type="submit"
+                color="primary"
+                aria-label="Create farm"
+                disabled={creating || draftName.trim().length === 0}
+                sx={{ mt: 1, border: 1, borderColor: "divider" }}
+              >
+                {creating ? <CircularProgress size={20} /> : <AddIcon />}
+              </IconButton>
             </Stack>
           </Box>
         </CardContent>
@@ -135,13 +140,13 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
                       {isRenaming ? (
                         <Stack spacing={1}>
                           <TextField
-                            label="Rename farm"
+                            label="Edit farm name"
                             value={renameDraft}
                             onChange={(e) => setRenameDraft(e.target.value)}
                             error={!!renameError}
                             helperText={renameError ?? undefined}
                             slotProps={{
-                              htmlInput: { "aria-label": `Rename ${f.name}` },
+                              htmlInput: { "aria-label": `Edit ${f.name}` },
                             }}
                           />
                           <Stack direction="row" spacing={1}>
@@ -188,7 +193,7 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
                             onClick={() => beginRename(f.id, f.name)}
                             sx={{ flexShrink: 0 }}
                           >
-                            Rename
+                            Edit
                           </Button>
                         </Stack>
                       )}

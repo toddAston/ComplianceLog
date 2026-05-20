@@ -65,6 +65,22 @@ describe("FarmManager", () => {
     expect(await db.farms.count()).toBe(1);
   });
 
+  it("uses an Edit affordance (not Rename) on the farm row", async () => {
+    await db.farms.add({
+      id: "f-1",
+      organizationId: ORG,
+      name: "North",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FarmManager organizationId={ORG} />);
+
+    expect(
+      await screen.findByRole("button", { name: /^edit$/i })
+    ).toBeTruthy();
+    const row = await screen.findByTestId("farm-row-f-1");
+    expect(within(row).queryByRole("button", { name: /^rename$/i })).toBeNull();
+  });
+
   it("does not leak the raw farm id into the farm row UI", async () => {
     await db.farms.add({
       id: "farm-debug-xyz",
@@ -110,8 +126,8 @@ describe("FarmManager", () => {
     });
     render(<FarmManager organizationId={ORG} />);
 
-    await user.click(await screen.findByRole("button", { name: /rename/i }));
-    const input = await screen.findByLabelText("Rename North");
+    await user.click(await screen.findByRole("button", { name: /^edit$/i }));
+    const input = await screen.findByLabelText("Edit North");
     await user.clear(input);
     await user.type(input, "North Farm");
     await user.click(screen.getByRole("button", { name: /save/i }));
@@ -130,8 +146,8 @@ describe("FarmManager", () => {
     });
     render(<FarmManager organizationId={ORG} />);
 
-    await user.click(await screen.findByRole("button", { name: /rename/i }));
-    const input = await screen.findByLabelText("Rename North");
+    await user.click(await screen.findByRole("button", { name: /^edit$/i }));
+    const input = await screen.findByLabelText("Edit North");
     await user.clear(input);
     await user.type(input, "Throwaway");
     await user.click(screen.getByRole("button", { name: /cancel/i }));
@@ -160,9 +176,9 @@ describe("FarmManager", () => {
 
     const northRow = await screen.findByTestId("farm-row-f-1");
     await user.click(
-      within(northRow).getByRole("button", { name: /rename/i })
+      within(northRow).getByRole("button", { name: /^edit$/i })
     );
-    const input = await screen.findByLabelText("Rename North");
+    const input = await screen.findByLabelText("Edit North");
     await user.clear(input);
     await user.type(input, "South");
     await user.click(screen.getByRole("button", { name: /save/i }));
