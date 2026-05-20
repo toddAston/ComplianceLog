@@ -8,6 +8,7 @@ import {
 } from "./db/queries";
 import { DraftApplicationRecordForm } from "./ui/application-record/DraftApplicationRecordForm";
 import { DraftsList } from "./ui/application-record/DraftsList";
+import { ContractorManager } from "./ui/contractor/ContractorManager";
 import { FarmManager } from "./ui/farm/FarmManager";
 import { OfflineBadge } from "./ui/system/OfflineBadge";
 import { DEMO_ORG_ID } from "./db/seed";
@@ -42,6 +43,11 @@ function App() {
       <section style={{ marginTop: "2rem" }}>
         <h2>Manage farms</h2>
         <FarmManager organizationId={DEMO_ORG_ID} />
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Manage contractors</h2>
+        <ContractorManager organizationId={DEMO_ORG_ID} />
       </section>
 
       <section style={{ marginTop: "2rem", borderTop: "1px solid #eee", paddingTop: "1rem" }}>
