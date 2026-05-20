@@ -114,7 +114,7 @@ export function AppHeader() {
               color: "var(--color-text-secondary)",
             }}
           >
-            {actor.actorName}
+            {actor.displayName}
           </span>
         </div>
       </header>

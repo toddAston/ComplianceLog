@@ -63,7 +63,6 @@
     "dompurify": "3.4.3",
     "electron-to-chromium": "1.5.356",
     "fflate": "0.8.2",
-    "lru-cache": "11.3.6",
     "postcss": "8.5.14"
   }
 }

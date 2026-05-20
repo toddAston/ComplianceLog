@@ -12,8 +12,8 @@ export function RecordsListPage() {
     filter === "all"
       ? records
       : records.filter((r) => {
-          if (filter === "locked") return r.status === "locked" || r.status === "accepted";
-          return r.status === filter;
+          if (filter === "locked") return r.workflowStatus === "locked" || r.workflowStatus === "accepted";
+          return r.workflowStatus === filter;
         });
 
   const tabs: { key: TabFilter; label: string }[] = [
@@ -104,7 +104,7 @@ export function RecordsListPage() {
               locked: { bg: "#dcfce7", text: "#15803d" },
               needs_correction: { bg: "#fee2e2", text: "#991b1b" },
             };
-            const colors = statusColors[record.status] || statusColors.draft;
+            const colors = statusColors[record.workflowStatus] || statusColors.draft;
 
             return (
               <div
@@ -122,14 +122,16 @@ export function RecordsListPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text)", fontFamily: "'Courier New', monospace" }}>
-                      {record.dateApplied || "No date set"}
+                      {record.contractorInputs.applicationDate || "No date set"}
                     </div>
                     <div style={{ fontSize: 14, color: "var(--color-text)", marginTop: 4 }}>
-                      {record.fieldId ? `Field: ${record.fieldId.slice(0, 8)}...` : "No field selected"}
+                      {record.contractorInputs.fieldName
+                        ? `Field: ${record.contractorInputs.fieldName}`
+                        : "No field selected"}
                     </div>
-                    {record.productSnapshot && (
+                    {record.contractorInputs.productName && (
                       <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-primary)", marginTop: 4 }}>
-                        {(record.productSnapshot as { name?: string })?.name || "Product"}
+                        {record.contractorInputs.productName}
                       </div>
                     )}
                   </div>
@@ -143,14 +145,14 @@ export function RecordsListPage() {
                     whiteSpace: "nowrap",
                     textTransform: "capitalize",
                   }}>
-                    {record.status.replace("_", " ")}
+                    {record.workflowStatus.replace("_", " ")}
                   </span>
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e8e8e8", fontSize: 12, color: "var(--color-text-secondary)" }}>
-                  {record.status === "draft" && (
+                  {record.workflowStatus === "draft" && (
                     <Link to={`/records/${record.id}/edit`} style={{ color: "var(--color-primary)", textDecoration: "none", fontWeight: 500 }}>Edit</Link>
                   )}
-                  {record.status !== "draft" && (
+                  {record.workflowStatus !== "draft" && (
                     <span>ID: {record.id.slice(0, 12)}</span>
                   )}
                 </div>

@@ -33,10 +33,10 @@ export function SettingsPage() {
               fontSize: 18,
               fontWeight: 700,
             }}>
-              {actor.actorName.charAt(0).toUpperCase()}
+              {actor.displayName.charAt(0).toUpperCase()}
             </div>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>{actor.actorName}</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>{actor.displayName}</div>
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
                 {role === "manager" ? "Manager" : "Applicator"}
               </div>
@@ -44,9 +44,9 @@ export function SettingsPage() {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <DetailRow label="Name" value={actor.actorName} />
+            <DetailRow label="Name" value={actor.displayName} />
             <DetailRow label="Role" value={role === "manager" ? "Manager" : "Applicator"} />
-            <DetailRow label="Actor ID" value={actor.actorId.slice(0, 12) + "..."} />
+            <DetailRow label="User ID" value={actor.userId.slice(0, 12) + "..."} />
           </div>
         </div>
       </section>

@@ -2,15 +2,16 @@ import { Link } from "react-router-dom";
 import { useSession } from "../session/SessionContext";
 import { useAllApplicationRecords } from "../../db/queries";
 import { RoleToggle } from "../session/RoleToggle";
+import type { ApplicationRecord } from "../../domain/types";
 
 export function DashboardPage() {
   const { role, actor } = useSession();
   const records = useAllApplicationRecords();
 
-  const draftCount = records.filter((r) => r.status === "draft").length;
-  const submittedCount = records.filter((r) => r.status === "submitted").length;
-  const lockedCount = records.filter((r) => r.status === "locked").length;
-  const pendingCount = records.filter((r) => r.status === "submitted" || r.status === "pending_review").length;
+  const draftCount = records.filter((r) => r.workflowStatus === "draft").length;
+  const submittedCount = records.filter((r) => r.workflowStatus === "submitted").length;
+  const lockedCount = records.filter((r) => r.workflowStatus === "locked").length;
+  const pendingCount = records.filter((r) => r.workflowStatus === "submitted" || r.workflowStatus === "pending_review").length;
 
   return (
     <div style={{ maxWidth: 800, margin: "0 auto" }}>
@@ -18,7 +19,7 @@ export function DashboardPage() {
       <div style={{ marginBottom: 32 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <h1 style={{ fontSize: 24, fontWeight: 700 }}>
-            Welcome, {actor.actorName}! 👋
+            Welcome, {actor.displayName}! 👋
           </h1>
           <span style={{
             fontSize: 11,
@@ -141,7 +142,7 @@ export function DashboardPage() {
             <EmptyState message="No records pending review" />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {records.filter((r) => r.status === "submitted" || r.status === "pending_review").slice(0, 5).map((r) => (
+              {records.filter((r) => r.workflowStatus === "submitted" || r.workflowStatus === "pending_review").slice(0, 5).map((r) => (
                 <RecordCard key={r.id} record={r} />
               ))}
             </div>
@@ -168,7 +169,7 @@ function StatCard({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function RecordCard({ record }: { record: { id: string; status: string; dateApplied?: string; fieldId?: string } }) {
+function RecordCard({ record }: { record: ApplicationRecord }) {
   const statusColors: Record<string, { bg: string; text: string }> = {
     draft: { bg: "#f5f5f5", text: "#646464" },
     submitted: { bg: "#dbeafe", text: "#1e40af" },
@@ -177,7 +178,7 @@ function RecordCard({ record }: { record: { id: string; status: string; dateAppl
     locked: { bg: "#dcfce7", text: "#15803d" },
     needs_correction: { bg: "#fee2e2", text: "#991b1b" },
   };
-  const colors = statusColors[record.status] || statusColors.draft;
+  const colors = statusColors[record.workflowStatus] || statusColors.draft;
 
   return (
     <div style={{
@@ -194,10 +195,10 @@ function RecordCard({ record }: { record: { id: string; status: string; dateAppl
     }}>
       <div>
         <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text)" }}>
-          {record.dateApplied || "No date"}
+          {record.contractorInputs.applicationDate || "No date"}
         </div>
         <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
-          ID: {record.id.slice(0, 8)}...
+          {record.contractorInputs.fieldName || `ID: ${record.id.slice(0, 8)}...`}
         </div>
       </div>
       <span style={{
@@ -209,7 +210,7 @@ function RecordCard({ record }: { record: { id: string; status: string; dateAppl
         color: colors.text,
         textTransform: "capitalize",
       }}>
-        {record.status.replace("_", " ")}
+        {record.workflowStatus.replace("_", " ")}
       </span>
     </div>
   );

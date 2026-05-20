@@ -2,8 +2,8 @@ import { useAllApplicationRecords } from "../../db/queries";
 
 export function ReviewsPage() {
   const records = useAllApplicationRecords();
-  const pendingRecords = records.filter((r) => r.status === "submitted" || r.status === "pending_review");
-  const lockedRecords = records.filter((r) => r.status === "locked" || r.status === "accepted");
+  const pendingRecords = records.filter((r) => r.workflowStatus === "submitted" || r.workflowStatus === "pending_review");
+  const lockedRecords = records.filter((r) => r.workflowStatus === "locked" || r.workflowStatus === "accepted");
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto" }}>
@@ -40,9 +40,11 @@ export function ReviewsPage() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>{record.dateApplied || "No date"}</div>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>
+                    {record.contractorInputs.applicationDate || "No date"}
+                  </div>
                   <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
-                    Applicator: {record.applicatorId?.slice(0, 8) || "Unknown"}
+                    Applicator: {record.contractorInputs.applicatorName || "Unknown"}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>

@@ -3,22 +3,22 @@ import { createTheme } from "@mui/material/styles";
 export const fieldlogTheme = createTheme({
   palette: {
     mode: "light",
-    primary: { main: "#2E7D32", contrastText: "#ffffff" },
+    primary: { main: "#2e7d32", contrastText: "#ffffff" },
     secondary: { main: "#F57C00" },
     background: { default: "#FAFAFA", paper: "#f5f5f5" },
-    error: { main: "#EF4444", contrastText: "#ffffff" },
-    warning: { main: "#F59E0B", contrastText: "#ffffff" },
-    success: { main: "#22C55E", contrastText: "#ffffff" },
+    error: { main: "#d32f2f", contrastText: "#ffffff" },
+    warning: { main: "#F59E0B", contrastText: "#1f2937" },
+    success: { main: "#15803d", contrastText: "#ffffff" },
     text: {
       primary: "#212121",
       secondary: "#646464",
-      disabled: "#c8c8c8",
+      disabled: "#737373",
     },
     divider: "#c8c8c8",
   },
   typography: {
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    fontSize: 14,
+    fontSize: 16,
     h1: { fontSize: "24px", fontWeight: 700, lineHeight: 1.3, letterSpacing: "-0.01em" },
     h2: { fontSize: "20px", fontWeight: 600, lineHeight: 1.35, letterSpacing: "-0.01em" },
     h3: { fontSize: "16px", fontWeight: 600, lineHeight: 1.4, letterSpacing: "-0.01em" },
@@ -34,7 +34,7 @@ export const fieldlogTheme = createTheme({
       defaultProps: { variant: "contained", disableElevation: true },
       styleOverrides: {
         root: {
-          minHeight: 40,
+          minHeight: 44,
           padding: "0 16px",
           borderRadius: 6,
           transition: "background-color 150ms ease-in-out",
@@ -49,10 +49,15 @@ export const fieldlogTheme = createTheme({
     MuiTextField: {
       defaultProps: { fullWidth: true, variant: "outlined", size: "small" },
     },
+    MuiInputBase: {
+      styleOverrides: {
+        root: { minHeight: 44 },
+      },
+    },
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          minHeight: 40,
+          minHeight: 44,
           borderRadius: 6,
           backgroundColor: "#FAFAFA",
           "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#2E7D32" },

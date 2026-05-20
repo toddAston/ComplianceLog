@@ -27,7 +27,7 @@ export function StepperLayout({
     <div style={{ maxWidth: 520, margin: "0 auto", padding: "24px 0" }}>
       {/* Desktop step indicator */}
       <div className="step-indicator-desktop" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 32 }}>
-        {stepLabels.map((label, i) => (
+        {stepLabels.map((_label, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div
               style={{
