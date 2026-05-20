@@ -9,7 +9,7 @@ FieldLog (repo: ComplianceLog) — mobile-first, offline-capable pesticide appli
 Offline-first immutable pesticide application evidence capture system.
 
 # Project Status
-v0.1 — design/specification phase. The repo is **pre-scaffold**: no Vite/React app exists yet. `src/` currently holds only `src/ui/application-record/ApplicationRecordForm.ts` (a type-only sketch of the contractor form). When asked to implement features, expect to scaffold the Vite + React + TS app first; the design docs (below) are the source of truth for what to build, not the current code.
+v0.1 — Vite + React + TypeScript app scaffolded and running with Dexie/IndexedDB persistence, MUI UI, Zod schemas, and a vitest suite covering the golden path (draft → submit → product snapshot → manager review → lock → export) plus compliance checks, sync status, and audit timeline. **There is no backend yet** — all persistence is local to the browser and all role gating is client-side (see "Trust Boundary" below). The design docs (below) remain the source of truth for product intent; when they disagree with the code, flag the divergence rather than silently aligning the docs.
 
 # Source-of-Truth Documents
 Read these before designing or implementing — they define the domain and are more complete than the code:
@@ -55,6 +55,27 @@ When the design docs and the code disagree, the docs win — flag the divergence
 # Current MVP Goal
 Golden path:
 draft → submit → product snapshot → manager review → lock → export
+
+# Trust Boundary: When a Backend Lands
+Today FieldLog runs entirely in the browser. There is no server, no real auth, no API endpoints, and no SQL. That means the following are **demo-grade only** and MUST be re-enforced server-side before any production deployment:
+
+- **Role gating** (`useSessionRole`, `SessionProvider`, `DEMO_APPLICATOR_ACTOR` / `DEMO_MANAGER_ACTOR`) is a client-side toggle and is trivially bypassable. Treat it as UI scaffolding, not as authorization.
+- **Zod schemas in `src/domain/schemas.ts`** validate user input on the client only. When a backend exists, the same schemas (or their server-side equivalents) MUST be re-applied at the API boundary — never trust a payload because the UI is "supposed to" have validated it.
+- **Lifecycle invariants** (immutability after `locked`, append-only `recordEvents`, `productSnapshot` is frozen at submit, sync status independent of workflow status) are enforced by the service layer in `src/application/*`. The server must enforce these same invariants — the client can be replaced or tampered with.
+- **`inviteToken` in `contractorService.ts`** is a locally-generated UUID for stub display links. If invite flows become real auth artifacts, the token generator, expiry, and revocation store must move server-side and the strength must be reviewed.
+- **Error messages from services** are surfaced verbatim to the UI today. When wired to a real API, server error responses must not leak internal details (stack traces, raw DB errors) — keep client-side `err.message` passthrough on the client side of the boundary only.
+- **Rate limiting, password hashing (bcrypt/argon2), authorization checks on every endpoint, and parameterized queries** are all "N/A today, mandatory the moment a backend exists."
+
+When adding any feature that *would* hit a backend in production, write it so the server boundary is obvious in the code (a dedicated service function, a typed request/response shape) — don't smear the contract across UI components.
+
+# Dexie Schema Upgrades
+IndexedDB schema migrations are forward-only by Dexie's design — there is no rollback once a user's browser has run `db.version(N).stores(...)`. The current schema is `v1` in `src/db/fieldlogDb.ts`. Rules:
+
+- **Additive changes are cheap.** New tables, new indexes, and new optional fields on existing records don't require a version bump's worth of care — bump the version, declare the new stores, and existing rows are read back transparently because Dexie stores rows as opaque JSON.
+- **Renames, drops, and required-field additions need an upgrade function.** Use `db.version(N).stores({...}).upgrade(async (tx) => { ... })` to backfill or transform existing rows in the same transaction. Never assume the old schema is gone — users on stale tabs may still write under v(N-1).
+- **Breaking changes need an export-before-upgrade path.** If a migration cannot be done in-place (e.g., splitting a column, changing primary keys), the app must offer the user a JSON export of their existing records before bumping the version, and must surface an explicit "your local data was migrated / could not be migrated" status — silent data loss is unacceptable for an evidence-capture product.
+- **Every schema bump needs a test.** Open the DB at the prior version with a seeded row, then re-open at the new version and assert the row survives (or migrates) as expected. `fake-indexeddb` is already a dev dependency for this.
+- **The server is the long-term durability story, not Dexie.** Once sync exists, the local DB is a cache, not the system of record — but until then, treat schema bumps as one-way doors and act accordingly.
 
 # Commands
 No build/lint/dev scripts are defined yet — `package.json` only declares vitest devDependencies. When scaffolding Vite, add the standard scripts (`dev`, `build`, `preview`, `test`, `lint`, `typecheck`) under `scripts`.
