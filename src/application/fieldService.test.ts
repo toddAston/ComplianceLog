@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "../db/fieldlogDb";
 import { createFarm } from "./farmService";
-import { createField, renameField } from "./fieldService";
+import { createField, renameField, updateField } from "./fieldService";
 
 const ORG = "org-test";
 
@@ -158,5 +158,100 @@ describe("renameField", () => {
       name: "F",
     });
     await expect(renameField(field.id, "  ")).rejects.toThrow(/required/);
+  });
+});
+
+describe("updateField", () => {
+  async function seedField(extra: { defaultAcres?: number; crop?: string } = {}) {
+    const farm = await seedFarm();
+    return createField({
+      organizationId: ORG,
+      farmId: farm.id,
+      name: "Original",
+      defaultAcres: extra.defaultAcres,
+      defaultCropOrSite: extra.crop,
+    });
+  }
+
+  it("updates name, acres, and crop in a single call", async () => {
+    const field = await seedField({ defaultAcres: 10, crop: "Corn" });
+    const updated = await updateField(field.id, {
+      name: " New Name ",
+      defaultAcres: 25,
+      defaultCropOrSite: " Soybeans ",
+    });
+    expect(updated.name).toBe("New Name");
+    expect(updated.defaultAcres).toBe(25);
+    expect(updated.defaultCropOrSite).toBe("Soybeans");
+  });
+
+  it("leaves untouched fields alone when patch omits them", async () => {
+    const field = await seedField({ defaultAcres: 10, crop: "Corn" });
+    const updated = await updateField(field.id, { name: "Just Name" });
+    expect(updated.name).toBe("Just Name");
+    expect(updated.defaultAcres).toBe(10);
+    expect(updated.defaultCropOrSite).toBe("Corn");
+  });
+
+  it("clears defaultAcres when patched with null", async () => {
+    const field = await seedField({ defaultAcres: 10 });
+    const updated = await updateField(field.id, { defaultAcres: null });
+    expect(updated.defaultAcres).toBeUndefined();
+  });
+
+  it("clears defaultCropOrSite when patched with null", async () => {
+    const field = await seedField({ crop: "Corn" });
+    const updated = await updateField(field.id, { defaultCropOrSite: null });
+    expect(updated.defaultCropOrSite).toBeUndefined();
+  });
+
+  it("clears defaultCropOrSite when patched with whitespace-only", async () => {
+    const field = await seedField({ crop: "Corn" });
+    const updated = await updateField(field.id, { defaultCropOrSite: "   " });
+    expect(updated.defaultCropOrSite).toBeUndefined();
+  });
+
+  it("rejects NaN acres", async () => {
+    const field = await seedField();
+    await expect(
+      updateField(field.id, { defaultAcres: Number("lots") })
+    ).rejects.toThrow(/must be a number/i);
+  });
+
+  it("rejects negative acres", async () => {
+    const field = await seedField();
+    await expect(
+      updateField(field.id, { defaultAcres: -1 })
+    ).rejects.toThrow(/negative/i);
+  });
+
+  it("rejects an empty trimmed name when name is in the patch", async () => {
+    const field = await seedField();
+    await expect(updateField(field.id, { name: "   " })).rejects.toThrow(
+      /required/i
+    );
+  });
+
+  it("rejects a collision with another field's name on the same farm", async () => {
+    const farm = await seedFarm();
+    await createField({
+      organizationId: ORG,
+      farmId: farm.id,
+      name: "Taken",
+    });
+    const other = await createField({
+      organizationId: ORG,
+      farmId: farm.id,
+      name: "Other",
+    });
+    await expect(updateField(other.id, { name: "taken" })).rejects.toThrow(
+      /already exists/i
+    );
+  });
+
+  it("throws when the field does not exist", async () => {
+    await expect(updateField("missing", { name: "X" })).rejects.toThrow(
+      /not found/i
+    );
   });
 });

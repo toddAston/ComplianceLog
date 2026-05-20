@@ -33,6 +33,9 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [fieldEditingFarmId, setFieldEditingFarmId] = useState<string | null>(
+    null
+  );
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,6 +129,7 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
             <Stack spacing={1.5} data-testid="farm-list">
               {myFarms.map((f) => {
                 const isRenaming = renameTargetId === f.id;
+                const fieldEditLive = fieldEditingFarmId === f.id;
                 return (
                   <Card
                     key={f.id}
@@ -191,6 +195,8 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
                             size="small"
                             variant="outlined"
                             onClick={() => beginRename(f.id, f.name)}
+                            disabled={fieldEditLive}
+                            data-testid={`farm-edit-${f.id}`}
                             sx={{ flexShrink: 0 }}
                           >
                             Edit
@@ -201,6 +207,9 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
                       <FieldsForFarm
                         organizationId={organizationId}
                         farmId={f.id}
+                        onEditingChange={(editing) =>
+                          setFieldEditingFarmId(editing ? f.id : null)
+                        }
                       />
                     </CardContent>
                   </Card>

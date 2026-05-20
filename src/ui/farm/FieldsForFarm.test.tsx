@@ -163,6 +163,86 @@ describe("FieldsForFarm", () => {
     expect(await screen.findByRole("option", { name: "Bravo" })).toBeTruthy();
   });
 
+  it("picker pre-populates acres and crop and saves all three columns", async () => {
+    const user = userEvent.setup();
+    await db.fields.add({
+      id: "f-1",
+      organizationId: ORG,
+      farmId: FARM_ID,
+      name: "Existing",
+      defaultAcres: 12.5,
+      defaultCropOrSite: "Corn",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FieldsForFarm organizationId={ORG} farmId={FARM_ID} />);
+
+    await user.click(await screen.findByLabelText("Pick a field to edit"));
+    await user.click(await screen.findByRole("option", { name: "Existing" }));
+
+    expect(
+      (
+        screen.getByLabelText(`Edit acres for Existing`) as HTMLInputElement
+      ).value
+    ).toBe("12.5");
+    expect(
+      (
+        screen.getByLabelText(`Edit crop for Existing`) as HTMLInputElement
+      ).value
+    ).toBe("Corn");
+
+    await user.clear(screen.getByLabelText(`Edit acres for Existing`));
+    await user.type(screen.getByLabelText(`Edit acres for Existing`), "40");
+    await user.clear(screen.getByLabelText(`Edit crop for Existing`));
+    await user.type(screen.getByLabelText(`Edit crop for Existing`), "Wheat");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const updated = await db.fields.get("f-1");
+    expect(updated?.defaultAcres).toBe(40);
+    expect(updated?.defaultCropOrSite).toBe("Wheat");
+    expect(updated?.name).toBe("Existing");
+  });
+
+  it("clears acres and crop when the editor inputs are emptied", async () => {
+    const user = userEvent.setup();
+    await db.fields.add({
+      id: "f-1",
+      organizationId: ORG,
+      farmId: FARM_ID,
+      name: "ToBareName",
+      defaultAcres: 15,
+      defaultCropOrSite: "Cotton",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FieldsForFarm organizationId={ORG} farmId={FARM_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /^edit$/i }));
+    await user.clear(screen.getByLabelText(`Edit acres for ToBareName`));
+    await user.clear(screen.getByLabelText(`Edit crop for ToBareName`));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const updated = await db.fields.get("f-1");
+    expect(updated?.defaultAcres).toBeUndefined();
+    expect(updated?.defaultCropOrSite).toBeUndefined();
+  });
+
+  it("surfaces a 'must be a number' error when editor acres is non-numeric", async () => {
+    const user = userEvent.setup();
+    await db.fields.add({
+      id: "f-1",
+      organizationId: ORG,
+      farmId: FARM_ID,
+      name: "Numeric",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FieldsForFarm organizationId={ORG} farmId={FARM_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /^edit$/i }));
+    await user.type(screen.getByLabelText(`Edit acres for Numeric`), "lots");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText(/must be a number/i)).toBeTruthy();
+  });
+
   it("picking a field via the picker opens its inline editor and edits the name", async () => {
     const user = userEvent.setup();
     await db.fields.add({

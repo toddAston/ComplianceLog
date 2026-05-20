@@ -10,15 +10,21 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
-import { createField, renameField } from "../../application/fieldService";
+import { createField, updateField } from "../../application/fieldService";
 import { useAllFields } from "../../db/queries";
+import type { FieldSite } from "../../domain/types";
 
 export type FieldsForFarmProps = {
   organizationId: string;
   farmId: string;
+  onEditingChange?: (editing: boolean) => void;
 };
 
-export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
+export function FieldsForFarm({
+  organizationId,
+  farmId,
+  onEditingChange,
+}: FieldsForFarmProps) {
   const allFields = useAllFields();
   const fields = allFields
     .filter((f) => f.farmId === farmId)
@@ -31,9 +37,29 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
-  const [renameError, setRenameError] = useState<string | null>(null);
+  const [editTargetId, setEditTargetId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editAcres, setEditAcres] = useState("");
+  const [editCrop, setEditCrop] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const beginEdit = (f: FieldSite) => {
+    setEditTargetId(f.id);
+    setEditName(f.name);
+    setEditAcres(f.defaultAcres != null ? String(f.defaultAcres) : "");
+    setEditCrop(f.defaultCropOrSite ?? "");
+    setEditError(null);
+    onEditingChange?.(true);
+  };
+
+  const cancelEdit = () => {
+    setEditTargetId(null);
+    setEditName("");
+    setEditAcres("");
+    setEditCrop("");
+    setEditError(null);
+    onEditingChange?.(false);
+  };
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,14 +87,28 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
     }
   };
 
-  const submitRename = async (id: string) => {
-    setRenameError(null);
+  const submitEdit = async (id: string) => {
+    setEditError(null);
     try {
-      await renameField(id, renameDraft);
-      setRenameTargetId(null);
-      setRenameDraft("");
+      const trimmedAcres = editAcres.trim();
+      let acresPatch: number | null;
+      if (trimmedAcres === "") {
+        acresPatch = null;
+      } else {
+        const parsed = Number(trimmedAcres);
+        if (Number.isNaN(parsed)) {
+          throw new Error("Acres must be a number.");
+        }
+        acresPatch = parsed;
+      }
+      await updateField(id, {
+        name: editName,
+        defaultAcres: acresPatch,
+        defaultCropOrSite: editCrop.trim() === "" ? null : editCrop,
+      });
+      cancelEdit();
     } catch (err) {
-      setRenameError(err instanceof Error ? err.message : "Unknown error.");
+      setEditError(err instanceof Error ? err.message : "Unknown error.");
     }
   };
 
@@ -92,20 +132,15 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
           select
           size="small"
           label="Pick a field to edit"
-          value={renameTargetId ?? ""}
+          value={editTargetId ?? ""}
           onChange={(e) => {
             const id = e.target.value;
             if (!id) {
-              setRenameTargetId(null);
-              setRenameDraft("");
-              setRenameError(null);
+              cancelEdit();
               return;
             }
             const target = fields.find((field) => field.id === id);
-            if (!target) return;
-            setRenameTargetId(id);
-            setRenameDraft(target.name);
-            setRenameError(null);
+            if (target) beginEdit(target);
           }}
           slotProps={{
             htmlInput: {
@@ -154,37 +189,64 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                 "&:hover": { borderColor: "text.secondary" },
               }}
             >
-              {renameTargetId === f.id ? (
-                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+              {editTargetId === f.id ? (
+                <Stack spacing={1}>
                   <TextField
                     size="small"
                     label="Edit field name"
-                    value={renameDraft}
-                    onChange={(e) => setRenameDraft(e.target.value)}
-                    error={!!renameError}
-                    helperText={renameError ?? undefined}
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    error={!!editError}
                     slotProps={{
                       htmlInput: { "aria-label": `Edit ${f.name}` },
                     }}
-                    sx={{ flex: "1 1 180px" }}
+                    fullWidth
                   />
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={() => submitRename(f.id)}
-                    disabled={renameDraft.trim().length === 0}
-                  >
-                    Save
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setRenameTargetId(null);
-                      setRenameError(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                    <TextField
+                      size="small"
+                      label="Acres"
+                      value={editAcres}
+                      onChange={(e) => setEditAcres(e.target.value)}
+                      slotProps={{
+                        htmlInput: {
+                          inputMode: "decimal",
+                          "aria-label": `Edit acres for ${f.name}`,
+                        },
+                      }}
+                      sx={{ flex: "0 1 110px" }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Crop"
+                      value={editCrop}
+                      onChange={(e) => setEditCrop(e.target.value)}
+                      slotProps={{
+                        htmlInput: {
+                          "aria-label": `Edit crop for ${f.name}`,
+                        },
+                      }}
+                      sx={{ flex: "1 1 140px" }}
+                    />
+                  </Stack>
+                  {editError && (
+                    <Typography variant="caption" color="error">
+                      {editError}
+                    </Typography>
+                  )}
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => submitEdit(f.id)}
+                      disabled={editName.trim().length === 0}
+                    >
+                      Save
+                    </Button>
+                    <Button size="small" onClick={cancelEdit}>
+                      Cancel
+                    </Button>
+                  </Stack>
                 </Stack>
               ) : (
                 <Stack
@@ -229,11 +291,7 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                   </Box>
                   <Button
                     size="small"
-                    onClick={() => {
-                      setRenameTargetId(f.id);
-                      setRenameDraft(f.name);
-                      setRenameError(null);
-                    }}
+                    onClick={() => beginEdit(f)}
                     sx={{ flexShrink: 0 }}
                   >
                     Edit

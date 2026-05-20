@@ -156,6 +156,100 @@ describe("FarmManager", () => {
     expect(await screen.findByText("North")).toBeTruthy();
   });
 
+  it("disables the farm Edit button while a child field is being edited", async () => {
+    const user = userEvent.setup();
+    await db.farms.add({
+      id: "f-1",
+      organizationId: ORG,
+      name: "North",
+      createdAt: new Date().toISOString(),
+    });
+    await db.fields.add({
+      id: "fld-1",
+      organizationId: ORG,
+      farmId: "f-1",
+      name: "Alpha",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FarmManager organizationId={ORG} />);
+
+    const farmEdit = (await screen.findByTestId(
+      "farm-edit-f-1"
+    )) as HTMLButtonElement;
+    expect(farmEdit.disabled).toBe(false);
+
+    const fieldRow = await screen.findByTestId("field-row-fld-1");
+    await user.click(within(fieldRow).getByRole("button", { name: /^edit$/i }));
+
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("farm-edit-f-1") as HTMLButtonElement).disabled
+      ).toBe(true)
+    );
+  });
+
+  it("re-enables the farm Edit button after cancelling a field edit", async () => {
+    const user = userEvent.setup();
+    await db.farms.add({
+      id: "f-1",
+      organizationId: ORG,
+      name: "North",
+      createdAt: new Date().toISOString(),
+    });
+    await db.fields.add({
+      id: "fld-1",
+      organizationId: ORG,
+      farmId: "f-1",
+      name: "Alpha",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FarmManager organizationId={ORG} />);
+
+    const fieldRow = await screen.findByTestId("field-row-fld-1");
+    await user.click(within(fieldRow).getByRole("button", { name: /^edit$/i }));
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("farm-edit-f-1") as HTMLButtonElement).disabled
+      ).toBe(true)
+    );
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("farm-edit-f-1") as HTMLButtonElement).disabled
+      ).toBe(false)
+    );
+  });
+
+  it("re-enables the farm Edit button after saving a field edit", async () => {
+    const user = userEvent.setup();
+    await db.farms.add({
+      id: "f-1",
+      organizationId: ORG,
+      name: "North",
+      createdAt: new Date().toISOString(),
+    });
+    await db.fields.add({
+      id: "fld-1",
+      organizationId: ORG,
+      farmId: "f-1",
+      name: "Alpha",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FarmManager organizationId={ORG} />);
+
+    const fieldRow = await screen.findByTestId("field-row-fld-1");
+    await user.click(within(fieldRow).getByRole("button", { name: /^edit$/i }));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("farm-edit-f-1") as HTMLButtonElement).disabled
+      ).toBe(false)
+    );
+  });
+
   it("surfaces an inline rename error when the new name collides", async () => {
     const user = userEvent.setup();
     await db.farms.bulkAdd([

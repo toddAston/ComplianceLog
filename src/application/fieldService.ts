@@ -66,26 +66,71 @@ export async function renameField(
   fieldId: string,
   newName: string
 ): Promise<FieldSite> {
-  const trimmed = newName.trim();
-  if (!trimmed) {
-    throw new Error("Field name is required.");
-  }
+  return updateField(fieldId, { name: newName });
+}
 
+export type UpdateFieldInput = {
+  name?: string;
+  defaultAcres?: number | null;
+  defaultCropOrSite?: string | null;
+};
+
+export async function updateField(
+  fieldId: string,
+  patch: UpdateFieldInput
+): Promise<FieldSite> {
   const field = await db.fields.get(fieldId);
   if (!field) {
     throw new Error("Field not found.");
   }
 
-  const siblings = await db.fields.where("farmId").equals(field.farmId).toArray();
-  const collision = siblings.find(
-    (f) =>
-      f.id !== fieldId && f.name.trim().toLowerCase() === trimmed.toLowerCase()
-  );
-  if (collision) {
-    throw new Error(`A field named "${trimmed}" already exists on this farm.`);
+  const next: FieldSite = { ...field };
+
+  if (patch.name !== undefined) {
+    const trimmed = patch.name.trim();
+    if (!trimmed) {
+      throw new Error("Field name is required.");
+    }
+    const siblings = await db.fields
+      .where("farmId")
+      .equals(field.farmId)
+      .toArray();
+    const collision = siblings.find(
+      (f) =>
+        f.id !== fieldId &&
+        f.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (collision) {
+      throw new Error(
+        `A field named "${trimmed}" already exists on this farm.`
+      );
+    }
+    next.name = trimmed;
   }
 
-  const updated: FieldSite = { ...field, name: trimmed };
-  await db.fields.put(updated);
-  return updated;
+  if (patch.defaultAcres !== undefined) {
+    if (patch.defaultAcres === null) {
+      next.defaultAcres = undefined;
+    } else {
+      if (Number.isNaN(patch.defaultAcres)) {
+        throw new Error("Acres must be a number.");
+      }
+      if (patch.defaultAcres < 0) {
+        throw new Error("Acres cannot be negative.");
+      }
+      next.defaultAcres = patch.defaultAcres;
+    }
+  }
+
+  if (patch.defaultCropOrSite !== undefined) {
+    if (patch.defaultCropOrSite === null) {
+      next.defaultCropOrSite = undefined;
+    } else {
+      const trimmedCrop = patch.defaultCropOrSite.trim();
+      next.defaultCropOrSite = trimmedCrop || undefined;
+    }
+  }
+
+  await db.fields.put(next);
+  return next;
 }
