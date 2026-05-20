@@ -9,6 +9,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { createFarm, renameFarm } from "../../application/farmService";
 import { useAllFarms } from "../../db/queries";
+import { FieldsForFarm } from "./FieldsForFarm";
 
 export type FarmManagerProps = {
   organizationId: string;
@@ -157,6 +158,10 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
                         </Button>
                       </Stack>
                     )}
+                    <FieldsForFarm
+                      organizationId={organizationId}
+                      farmId={f.id}
+                    />
                   </CardContent>
                 </Card>
               ))}
