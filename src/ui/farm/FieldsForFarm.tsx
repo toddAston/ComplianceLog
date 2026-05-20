@@ -3,9 +3,12 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
+import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import AddIcon from "@mui/icons-material/Add";
 import { createField, renameField } from "../../application/fieldService";
 import { useAllFields } from "../../db/queries";
 
@@ -116,12 +119,13 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                 <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
                   <TextField
                     size="small"
+                    label="Edit field name"
                     value={renameDraft}
                     onChange={(e) => setRenameDraft(e.target.value)}
                     error={!!renameError}
                     helperText={renameError ?? undefined}
                     slotProps={{
-                      htmlInput: { "aria-label": `Rename ${f.name}` },
+                      htmlInput: { "aria-label": `Edit ${f.name}` },
                     }}
                     sx={{ flex: "1 1 180px" }}
                   />
@@ -193,7 +197,7 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                     }}
                     sx={{ flexShrink: 0 }}
                   >
-                    Rename
+                    Edit
                   </Button>
                 </Stack>
               )}
@@ -258,14 +262,16 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
             }}
             sx={{ flex: "1 1 120px" }}
           />
-          <Button
+          <IconButton
             type="submit"
             size="small"
-            variant="contained"
+            color="primary"
+            aria-label="Add field"
             disabled={creating || name.trim().length === 0}
+            sx={{ border: 1, borderColor: "divider", alignSelf: "center" }}
           >
-            {creating ? "Adding…" : "Add field"}
-          </Button>
+            {creating ? <CircularProgress size={18} /> : <AddIcon />}
+          </IconButton>
         </Stack>
       </Box>
     </Box>

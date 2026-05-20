@@ -132,6 +132,22 @@ describe("FieldsForFarm", () => {
     expect(screen.queryByText("Theirs")).toBeNull();
   });
 
+  it("exposes an Edit affordance (not Rename) on field rows", async () => {
+    await db.fields.add({
+      id: "f-1",
+      organizationId: ORG,
+      farmId: FARM_ID,
+      name: "Old",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FieldsForFarm organizationId={ORG} farmId={FARM_ID} />);
+
+    expect(
+      await screen.findByRole("button", { name: /^edit$/i })
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^rename$/i })).toBeNull();
+  });
+
   it("renames an existing field via the inline editor", async () => {
     const user = userEvent.setup();
     await db.fields.add({
@@ -143,8 +159,8 @@ describe("FieldsForFarm", () => {
     });
     render(<FieldsForFarm organizationId={ORG} farmId={FARM_ID} />);
 
-    await user.click(await screen.findByRole("button", { name: /rename/i }));
-    const input = await screen.findByLabelText("Rename Old");
+    await user.click(await screen.findByRole("button", { name: /^edit$/i }));
+    const input = await screen.findByLabelText("Edit Old");
     await user.clear(input);
     await user.type(input, "New Name");
     await user.click(screen.getByRole("button", { name: /save/i }));
