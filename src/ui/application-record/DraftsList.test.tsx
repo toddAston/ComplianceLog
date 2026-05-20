@@ -114,6 +114,46 @@ afterEach(() => {
   cleanup();
 });
 
+describe("DraftsList empty + chip rendering", () => {
+  it("renders 'No records yet.' when there are no records", async () => {
+    render(<DraftsList />);
+    expect(await screen.findByText(/No records yet/i)).toBeTruthy();
+  });
+
+  it("renders a workflow Chip and a sync Chip per row", async () => {
+    const draft = await seedAttestedDraft();
+    render(<DraftsList />);
+
+    const workflow = await screen.findByTestId(`workflow-${draft.id}`);
+    const sync = screen.getByTestId(`sync-${draft.id}`);
+
+    expect(workflow.textContent).toBe("draft");
+    expect(sync.textContent).toBe("local_only");
+
+    expect(workflow.closest(".MuiChip-root")).not.toBeNull();
+    expect(sync.closest(".MuiChip-root")).not.toBeNull();
+  });
+
+  it("uses success-colored Chip for locked rows and info-colored Chip for pending_review", async () => {
+    const pending = await seedPendingReviewRecord();
+    const locked = await seedLockedRecord();
+    render(<DraftsList />);
+
+    await screen.findByTestId(`workflow-${pending.id}`);
+    await screen.findByTestId(`workflow-${locked.id}`);
+
+    const pendingChip = screen
+      .getByTestId(`workflow-${pending.id}`)
+      .closest(".MuiChip-root")!;
+    const lockedChip = screen
+      .getByTestId(`workflow-${locked.id}`)
+      .closest(".MuiChip-root")!;
+
+    expect(pendingChip.className).toMatch(/colorInfo/);
+    expect(lockedChip.className).toMatch(/colorSuccess/);
+  });
+});
+
 describe("DraftsList submit affordance", () => {
   it("shows a Submit button on draft rows and hides it once submitted", async () => {
     const draft = await seedAttestedDraft();

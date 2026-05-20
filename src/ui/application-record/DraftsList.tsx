@@ -1,4 +1,13 @@
 import { useState } from "react";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { useAllApplicationRecords } from "../../db/queries";
 import {
   acceptAndLockApplicationRecord,
@@ -10,6 +19,7 @@ import {
   type LockedApplicationRecordExport,
 } from "../../application/applicationRecordExport";
 import { runComplianceChecks } from "../../application/complianceRules";
+import type { ApplicationRecord } from "../../domain/types";
 import { DEMO_APPLICATOR_ACTOR, DEMO_MANAGER_ACTOR } from "../demoSession";
 import { RecordDetailDialog } from "./RecordDetailDialog";
 
@@ -21,6 +31,53 @@ type RowState =
   | { kind: "exporting" }
   | { kind: "exported"; dto: LockedApplicationRecordExport }
   | { kind: "error"; message: string };
+
+type WorkflowChipColor =
+  | "default"
+  | "primary"
+  | "secondary"
+  | "success"
+  | "error"
+  | "warning"
+  | "info";
+
+function workflowChipColor(
+  status: ApplicationRecord["workflowStatus"]
+): WorkflowChipColor {
+  switch (status) {
+    case "draft":
+      return "default";
+    case "pending_review":
+      return "info";
+    case "needs_correction":
+      return "warning";
+    case "locked":
+      return "success";
+    case "exported":
+      return "primary";
+    default:
+      return "default";
+  }
+}
+
+function syncChipColor(
+  status: ApplicationRecord["syncStatus"]
+): WorkflowChipColor {
+  switch (status) {
+    case "local_only":
+      return "default";
+    case "queued":
+      return "info";
+    case "syncing":
+      return "info";
+    case "synced":
+      return "success";
+    case "sync_failed":
+      return "error";
+    default:
+      return "default";
+  }
+}
 
 export function DraftsList() {
   const records = useAllApplicationRecords();
@@ -121,7 +178,9 @@ export function DraftsList() {
   };
 
   if (records.length === 0) {
-    return <p style={{ color: "#888" }}>No records yet.</p>;
+    return (
+      <Typography color="text.secondary">No records yet.</Typography>
+    );
   }
 
   const selectedRecord = selectedRecordId
@@ -130,298 +189,264 @@ export function DraftsList() {
 
   return (
     <>
-    <ul style={{ listStyle: "none", paddingLeft: 0 }}>
-      {records.map((r) => {
-        const state = rowState[r.id] ?? { kind: "idle" };
-        const isDraft = r.workflowStatus === "draft";
-        const isPendingReview = r.workflowStatus === "pending_review";
-        const isLocked = r.workflowStatus === "locked";
-        const isNeedsCorrection = r.workflowStatus === "needs_correction";
-        const attestationConfirmed = r.contractorInputs.attestationConfirmed;
-        const canSubmit = isDraft && attestationConfirmed;
-        const notesValue = reviewNotes[r.id] ?? "";
-        const correctionNotesValue = correctionNotes[r.id] ?? "";
-        const canRequestCorrection =
-          isPendingReview && correctionNotesValue.trim().length > 0;
-        const complianceResults = runComplianceChecks(r);
-        const warningCount = complianceResults.filter(
-          (c) => c.severity === "warning" || c.severity === "error"
-        ).length;
+      <Stack
+        component="ul"
+        spacing={1.5}
+        sx={{ listStyle: "none", p: 0, m: 0 }}
+      >
+        {records.map((r) => {
+          const state = rowState[r.id] ?? { kind: "idle" };
+          const isDraft = r.workflowStatus === "draft";
+          const isPendingReview = r.workflowStatus === "pending_review";
+          const isLocked = r.workflowStatus === "locked";
+          const isNeedsCorrection = r.workflowStatus === "needs_correction";
+          const attestationConfirmed =
+            r.contractorInputs.attestationConfirmed;
+          const canSubmit = isDraft && attestationConfirmed;
+          const notesValue = reviewNotes[r.id] ?? "";
+          const correctionNotesValue = correctionNotes[r.id] ?? "";
+          const canRequestCorrection =
+            isPendingReview && correctionNotesValue.trim().length > 0;
+          const complianceResults = runComplianceChecks(r);
+          const warningCount = complianceResults.filter(
+            (c) => c.severity === "warning" || c.severity === "error"
+          ).length;
 
-        return (
-          <li
-            key={r.id}
-            style={{
-              border: "1px solid #eee",
-              padding: "0.5rem 0.75rem",
-              marginBottom: "0.4rem",
-            }}
-          >
-            <div>
-              <code style={{ color: "#888" }}>{r.id.slice(0, 8)}</code>
-              {" — "}
-              {r.contractorInputs.fieldName} /{" "}
-              {r.contractorInputs.productName} —{" "}
-              <span data-testid={`workflow-${r.id}`}>{r.workflowStatus}</span>
-              {" / "}
-              <span data-testid={`sync-${r.id}`}>{r.syncStatus}</span>
-              {warningCount > 0 && (
-                <span
-                  style={{
-                    marginLeft: "0.5rem",
-                    color: "#e65100",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                  }}
-                  title={`${warningCount} compliance issue(s)`}
-                >
-                  ⚠ {warningCount}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setSelectedRecordId(r.id)}
-                style={{
-                  marginLeft: "0.5rem",
-                  padding: "0.1rem 0.4rem",
-                  fontSize: "0.8rem",
-                  cursor: "pointer",
-                }}
-              >
-                Details
-              </button>
-            </div>
-
-            {isDraft && (
-              <div style={{ marginTop: "0.4rem" }}>
-                <button
-                  type="button"
-                  onClick={() => onSubmit(r.id)}
-                  disabled={!canSubmit || state.kind === "submitting"}
-                  style={{
-                    padding: "0.3rem 0.7rem",
-                    fontSize: "0.9rem",
-                    cursor:
-                      !canSubmit || state.kind === "submitting"
-                        ? "not-allowed"
-                        : "pointer",
-                  }}
-                >
-                  {state.kind === "submitting" ? "Submitting…" : "Submit"}
-                </button>
-                {!attestationConfirmed && (
-                  <span
-                    style={{
-                      marginLeft: "0.5rem",
-                      fontSize: "0.8rem",
-                      color: "#666",
-                    }}
+          return (
+            <Box component="li" key={r.id} sx={{ listStyle: "none" }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ mb: 1, alignItems: "center", flexWrap: "wrap" }}
                   >
-                    Attestation required to submit.
-                  </span>
-                )}
-                {state.kind === "error" && (
-                  <span
-                    style={{
-                      marginLeft: "0.5rem",
-                      fontSize: "0.8rem",
-                      color: "#b00020",
-                    }}
-                  >
-                    {state.message}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {isLocked && (
-              <div style={{ marginTop: "0.4rem" }}>
-                {state.kind !== "exported" && (
-                  <button
-                    type="button"
-                    onClick={() => onViewExport(r.id)}
-                    disabled={state.kind === "exporting"}
-                    style={{
-                      padding: "0.3rem 0.7rem",
-                      fontSize: "0.9rem",
-                      cursor:
-                        state.kind === "exporting" ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {state.kind === "exporting"
-                      ? "Loading…"
-                      : "View export"}
-                  </button>
-                )}
-                {state.kind === "exported" && (
-                  <>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        marginBottom: "0.4rem",
-                      }}
+                    <Typography
+                      variant="caption"
+                      component="code"
+                      color="text.secondary"
                     >
-                      <span style={{ fontSize: "0.85rem", color: "#555" }}>
-                        Evidence export (audit packet — not a legal authorization
-                        certificate)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onCloseExport(r.id)}
-                        style={{
-                          padding: "0.2rem 0.5rem",
-                          fontSize: "0.8rem",
-                          cursor: "pointer",
-                        }}
+                      {r.id.slice(0, 8)}
+                    </Typography>
+                    <Typography variant="body2">
+                      {r.contractorInputs.fieldName} /{" "}
+                      {r.contractorInputs.productName}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={
+                        <span data-testid={`workflow-${r.id}`}>
+                          {r.workflowStatus}
+                        </span>
+                      }
+                      color={workflowChipColor(r.workflowStatus)}
+                    />
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={
+                        <span data-testid={`sync-${r.id}`}>
+                          {r.syncStatus}
+                        </span>
+                      }
+                      color={syncChipColor(r.syncStatus)}
+                    />
+                    {warningCount > 0 && (
+                      <Chip
+                        size="small"
+                        color="warning"
+                        label={`⚠ ${warningCount}`}
+                        title={`${warningCount} compliance issue(s)`}
+                      />
+                    )}
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => setSelectedRecordId(r.id)}
+                    >
+                      Details
+                    </Button>
+                  </Stack>
+
+                  {isDraft && (
+                    <Stack
+                      direction="row"
+                      spacing={1.5}
+                      sx={{ alignItems: "center", flexWrap: "wrap" }}
+                    >
+                      <Button
+                        size="small"
+                        onClick={() => onSubmit(r.id)}
+                        disabled={
+                          !canSubmit || state.kind === "submitting"
+                        }
                       >
-                        Close
-                      </button>
-                    </div>
-                    <pre
-                      data-testid={`export-${r.id}`}
-                      style={{
-                        fontSize: "0.75rem",
-                        background: "#f7f7f7",
-                        border: "1px solid #eee",
-                        padding: "0.5rem",
-                        overflowX: "auto",
-                        maxHeight: "20rem",
-                      }}
-                    >
-                      {JSON.stringify(state.dto, null, 2)}
-                    </pre>
-                  </>
-                )}
-                {state.kind === "error" && (
-                  <span
-                    style={{
-                      marginLeft: "0.5rem",
-                      fontSize: "0.8rem",
-                      color: "#b00020",
-                    }}
-                  >
-                    {state.message}
-                  </span>
-                )}
-              </div>
-            )}
+                        {state.kind === "submitting"
+                          ? "Submitting…"
+                          : "Submit"}
+                      </Button>
+                      {!attestationConfirmed && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                        >
+                          Attestation required to submit.
+                        </Typography>
+                      )}
+                      {state.kind === "error" && (
+                        <Typography variant="caption" color="error">
+                          {state.message}
+                        </Typography>
+                      )}
+                    </Stack>
+                  )}
 
-            {isPendingReview && (
-              <div style={{ marginTop: "0.4rem" }}>
-                <label
-                  htmlFor={`review-notes-${r.id}`}
-                  style={{ fontSize: "0.85rem", marginRight: "0.4rem" }}
-                >
-                  Review notes
-                </label>
-                <input
-                  id={`review-notes-${r.id}`}
-                  type="text"
-                  value={notesValue}
-                  onChange={(e) =>
-                    setReviewNotes((prev) => ({
-                      ...prev,
-                      [r.id]: e.target.value,
-                    }))
-                  }
-                  disabled={state.kind === "locking"}
-                  placeholder="Optional"
-                  style={{
-                    fontSize: "0.85rem",
-                    padding: "0.2rem 0.4rem",
-                    marginRight: "0.5rem",
-                    minWidth: "10rem",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => onLock(r.id)}
-                  disabled={state.kind === "locking"}
-                  style={{
-                    padding: "0.3rem 0.7rem",
-                    fontSize: "0.9rem",
-                    cursor: state.kind === "locking" ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {state.kind === "locking" ? "Locking…" : "Lock"}
-                </button>
-                <div style={{ marginTop: "0.4rem" }}>
-                  <label
-                    htmlFor={`correction-notes-${r.id}`}
-                    style={{ fontSize: "0.85rem", marginRight: "0.4rem" }}
-                  >
-                    Correction notes
-                  </label>
-                  <input
-                    id={`correction-notes-${r.id}`}
-                    type="text"
-                    value={correctionNotesValue}
-                    onChange={(e) =>
-                      setCorrectionNotes((prev) => ({
-                        ...prev,
-                        [r.id]: e.target.value,
-                      }))
-                    }
-                    disabled={state.kind === "requesting_correction"}
-                    placeholder="Required to request corrections"
-                    style={{
-                      fontSize: "0.85rem",
-                      padding: "0.2rem 0.4rem",
-                      marginRight: "0.5rem",
-                      minWidth: "12rem",
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onRequestCorrection(r.id)}
-                    disabled={
-                      !canRequestCorrection ||
-                      state.kind === "requesting_correction"
-                    }
-                    style={{
-                      padding: "0.3rem 0.7rem",
-                      fontSize: "0.9rem",
-                      cursor:
-                        !canRequestCorrection ||
-                        state.kind === "requesting_correction"
-                          ? "not-allowed"
-                          : "pointer",
-                    }}
-                  >
-                    {state.kind === "requesting_correction"
-                      ? "Requesting…"
-                      : "Request correction"}
-                  </button>
-                </div>
-                {state.kind === "error" && (
-                  <span
-                    style={{
-                      marginLeft: "0.5rem",
-                      fontSize: "0.8rem",
-                      color: "#b00020",
-                    }}
-                  >
-                    {state.message}
-                  </span>
-                )}
-              </div>
-            )}
+                  {isLocked && (
+                    <Stack spacing={1}>
+                      {state.kind !== "exported" && (
+                        <Box>
+                          <Button
+                            size="small"
+                            onClick={() => onViewExport(r.id)}
+                            disabled={state.kind === "exporting"}
+                          >
+                            {state.kind === "exporting"
+                              ? "Loading…"
+                              : "View export"}
+                          </Button>
+                        </Box>
+                      )}
+                      {state.kind === "exported" && (
+                        <>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{ alignItems: "center" }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Evidence export (audit packet — not a legal
+                              authorization certificate)
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => onCloseExport(r.id)}
+                            >
+                              Close
+                            </Button>
+                          </Stack>
+                          <Box
+                            component="pre"
+                            data-testid={`export-${r.id}`}
+                            sx={{
+                              fontSize: "0.75rem",
+                              bgcolor: "#f7f7f7",
+                              border: "1px solid #eee",
+                              borderRadius: 1,
+                              p: 1,
+                              m: 0,
+                              overflowX: "auto",
+                              maxHeight: "20rem",
+                            }}
+                          >
+                            {JSON.stringify(state.dto, null, 2)}
+                          </Box>
+                        </>
+                      )}
+                      {state.kind === "error" && (
+                        <Alert severity="error">{state.message}</Alert>
+                      )}
+                    </Stack>
+                  )}
 
-            {isNeedsCorrection && (
-              <div style={{ marginTop: "0.4rem", fontSize: "0.85rem", color: "#e65100" }}>
-                Needs correction — click Details to resubmit.
-              </div>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-    <RecordDetailDialog
-      record={selectedRecord}
-      onClose={() => setSelectedRecordId(null)}
-    />
+                  {isPendingReview && (
+                    <Stack spacing={1.5}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ alignItems: "center", flexWrap: "wrap" }}
+                      >
+                        <TextField
+                          size="small"
+                          label="Review notes"
+                          value={notesValue}
+                          placeholder="Optional"
+                          disabled={state.kind === "locking"}
+                          onChange={(e) =>
+                            setReviewNotes((prev) => ({
+                              ...prev,
+                              [r.id]: e.target.value,
+                            }))
+                          }
+                          slotProps={{ inputLabel: { shrink: true } }}
+                          sx={{ minWidth: "12rem" }}
+                        />
+                        <Button
+                          size="small"
+                          onClick={() => onLock(r.id)}
+                          disabled={state.kind === "locking"}
+                        >
+                          {state.kind === "locking" ? "Locking…" : "Lock"}
+                        </Button>
+                      </Stack>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ alignItems: "center", flexWrap: "wrap" }}
+                      >
+                        <TextField
+                          size="small"
+                          label="Correction notes"
+                          value={correctionNotesValue}
+                          placeholder="Required to request corrections"
+                          disabled={state.kind === "requesting_correction"}
+                          onChange={(e) =>
+                            setCorrectionNotes((prev) => ({
+                              ...prev,
+                              [r.id]: e.target.value,
+                            }))
+                          }
+                          slotProps={{ inputLabel: { shrink: true } }}
+                          sx={{ minWidth: "14rem" }}
+                        />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => onRequestCorrection(r.id)}
+                          disabled={
+                            !canRequestCorrection ||
+                            state.kind === "requesting_correction"
+                          }
+                        >
+                          {state.kind === "requesting_correction"
+                            ? "Requesting…"
+                            : "Request correction"}
+                        </Button>
+                      </Stack>
+                      {state.kind === "error" && (
+                        <Alert severity="error">{state.message}</Alert>
+                      )}
+                    </Stack>
+                  )}
+
+                  {isNeedsCorrection && (
+                    <Typography variant="caption" color="warning.main">
+                      Needs correction — click Details to resubmit.
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Box>
+          );
+        })}
+      </Stack>
+      <RecordDetailDialog
+        record={selectedRecord}
+        onClose={() => setSelectedRecordId(null)}
+      />
     </>
   );
 }

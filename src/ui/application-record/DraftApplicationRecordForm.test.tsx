@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import App from "../../App";
 import { db } from "../../db/fieldlogDb";
 import { seedDemoData } from "../../db/seed";
@@ -21,58 +16,44 @@ afterEach(() => {
 });
 
 async function fillValidDraft() {
+  const user = userEvent.setup();
+
   await screen.findByRole("option", {
     name: /John Smith.*Smith Spray Services/,
   });
 
-  fireEvent.change(screen.getByLabelText("Organization"), {
-    target: { value: "org-demo-semofarms" },
-  });
-  fireEvent.change(screen.getByLabelText("Applicator"), {
-    target: { value: "applicator-john-smith" },
-  });
-  fireEvent.change(screen.getByLabelText("Farm"), {
-    target: { value: "farm-north" },
-  });
-  fireEvent.change(screen.getByLabelText("Field"), {
-    target: { value: "field-7" },
-  });
-  fireEvent.change(screen.getByLabelText("Product"), {
-    target: { value: "product-example-herbicide-4l" },
-  });
+  await user.selectOptions(
+    screen.getByLabelText("Organization"),
+    "org-demo-semofarms"
+  );
+  await user.selectOptions(
+    screen.getByLabelText("Applicator"),
+    "applicator-john-smith"
+  );
+  await user.selectOptions(screen.getByLabelText("Farm"), "farm-north");
+  await user.selectOptions(screen.getByLabelText("Field"), "field-7");
+  await user.selectOptions(
+    screen.getByLabelText("Product"),
+    "product-example-herbicide-4l"
+  );
 
-  fireEvent.change(screen.getByLabelText("Crop or site"), {
-    target: { value: "Soybeans" },
-  });
-  fireEvent.change(screen.getByLabelText("Acres treated"), {
-    target: { value: "42.5" },
-  });
+  await user.type(screen.getByLabelText("Crop or site"), "Soybeans");
+  await user.type(screen.getByLabelText("Acres treated"), "42.5");
 
-  fireEvent.change(screen.getByLabelText("Application date"), {
-    target: { value: "2026-05-19" },
-  });
-  fireEvent.change(screen.getByLabelText("Start time"), {
-    target: { value: "08:00" },
-  });
-  fireEvent.change(screen.getByLabelText("Application method"), {
-    target: { value: "Ground broadcast" },
-  });
-  fireEvent.change(screen.getByLabelText("Rate applied"), {
-    target: { value: "1 qt/ac" },
-  });
-  fireEvent.change(screen.getByLabelText("Total amount applied"), {
-    target: { value: "10 gal" },
-  });
+  await user.type(screen.getByLabelText("Application date"), "2026-05-19");
+  await user.type(screen.getByLabelText("Start time"), "08:00");
+  await user.type(
+    screen.getByLabelText("Application method"),
+    "Ground broadcast"
+  );
+  await user.type(screen.getByLabelText("Rate applied"), "1 qt/ac");
+  await user.type(screen.getByLabelText("Total amount applied"), "10 gal");
 
-  fireEvent.change(screen.getByLabelText("Temperature"), {
-    target: { value: "72F" },
-  });
-  fireEvent.change(screen.getByLabelText("Wind speed"), {
-    target: { value: "5 mph" },
-  });
-  fireEvent.change(screen.getByLabelText("Wind direction"), {
-    target: { value: "S" },
-  });
+  await user.type(screen.getByLabelText("Temperature"), "72F");
+  await user.type(screen.getByLabelText("Wind speed"), "5 mph");
+  await user.type(screen.getByLabelText("Wind direction"), "S");
+
+  return user;
 }
 
 describe("DraftApplicationRecordForm", () => {
@@ -97,9 +78,10 @@ describe("DraftApplicationRecordForm", () => {
   });
 
   it("shows validation messages on empty submit and writes nothing", async () => {
+    const user = userEvent.setup();
     render(<DraftApplicationRecordForm />);
 
-    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
 
     expect(
       await screen.findByText(/Organization is required/i)
@@ -115,9 +97,8 @@ describe("DraftApplicationRecordForm", () => {
   it("creates a draft via the application service when valid inputs are submitted", async () => {
     render(<DraftApplicationRecordForm />);
 
-    await fillValidDraft();
-
-    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    const user = await fillValidDraft();
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
 
     await waitFor(async () => {
       expect(await db.applicationRecords.count()).toBe(1);
@@ -144,6 +125,37 @@ describe("DraftApplicationRecordForm", () => {
     expect(events[0].actorUserId).toBe("user-demo-applicator");
     expect(events[0].actorDisplayName).toBe("Demo Applicator");
   });
+
+  it("filters fields to the selected farm", async () => {
+    const user = userEvent.setup();
+    render(<DraftApplicationRecordForm />);
+
+    await screen.findByRole("option", { name: "North Farm" });
+
+    await user.selectOptions(screen.getByLabelText("Farm"), "farm-north");
+
+    const fieldSelect = screen.getByLabelText("Field") as HTMLSelectElement;
+    const fieldOptions = Array.from(
+      fieldSelect.querySelectorAll("option")
+    ).map((o) => o.textContent);
+    expect(fieldOptions).toContain("Field 7");
+    expect(fieldOptions.every((label) => label !== "Field 12-South")).toBe(
+      true
+    );
+  });
+
+  it("shows a success Alert after saving and clears the form", async () => {
+    render(<DraftApplicationRecordForm />);
+    const user = await fillValidDraft();
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Draft saved/i);
+
+    expect(
+      (screen.getByLabelText("Crop or site") as HTMLInputElement).value
+    ).toBe("");
+  });
 });
 
 describe("App + DraftApplicationRecordForm integration", () => {
@@ -154,9 +166,8 @@ describe("App + DraftApplicationRecordForm integration", () => {
       await screen.findByRole("heading", { level: 2, name: /Records \(0\)/ })
     ).toBeTruthy();
 
-    await fillValidDraft();
-
-    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    const user = await fillValidDraft();
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
 
     expect(
       await screen.findByRole("heading", { level: 2, name: /Records \(1\)/ })
@@ -168,8 +179,8 @@ describe("App + DraftApplicationRecordForm integration", () => {
   it("submitted draft persists across a remount (refresh)", async () => {
     const first = render(<App />);
 
-    await fillValidDraft();
-    fireEvent.click(screen.getByRole("button", { name: /save draft/i }));
+    const user = await fillValidDraft();
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
     await screen.findByRole("heading", { level: 2, name: /Records \(1\)/ });
 
     first.unmount();

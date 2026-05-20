@@ -1,14 +1,20 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { ThemeProvider } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
 import "./index.css";
 import App from "./App.tsx";
 import { seedDemoData } from "./db/seed";
 import { registerFieldLogSW } from "./pwa/registerSW";
+import { fieldlogTheme } from "./ui/theme";
 
 seedDemoData().finally(() => {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <App />
+      <ThemeProvider theme={fieldlogTheme}>
+        <CssBaseline />
+        <App />
+      </ThemeProvider>
     </StrictMode>
   );
 });

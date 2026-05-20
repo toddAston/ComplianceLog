@@ -2,6 +2,15 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import {
   useAllApplicators,
   useAllFarms,
@@ -13,10 +22,7 @@ import { createDraftApplicationRecord } from "../../application/applicationRecor
 import type { ContractorInputs } from "../../domain/types";
 import { DEMO_APPLICATOR_ACTOR } from "../demoSession";
 
-const optionalString = z
-  .string()
-  .optional()
-  .or(z.literal(""));
+const optionalString = z.string().optional().or(z.literal(""));
 
 const draftFormSchema = z.object({
   organizationId: z.string().min(1, "Organization is required"),
@@ -47,26 +53,22 @@ const draftFormSchema = z.object({
 
 type DraftFormValues = z.infer<typeof draftFormSchema>;
 
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: "0.875rem",
-  marginTop: "0.75rem",
-  marginBottom: "0.25rem",
-  color: "#333",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "0.4rem 0.5rem",
-  fontSize: "1rem",
-  boxSizing: "border-box",
-};
-
-const errorStyle: React.CSSProperties = {
-  color: "#b00020",
-  fontSize: "0.8rem",
-  marginTop: "0.15rem",
-};
+function SectionPaper({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      <Typography variant="subtitle1" component="h3" sx={{ mb: 1.5 }}>
+        {title}
+      </Typography>
+      <Stack spacing={2}>{children}</Stack>
+    </Paper>
+  );
+}
 
 export function DraftApplicationRecordForm() {
   const organizations = useAllOrganizations();
@@ -191,22 +193,14 @@ export function DraftApplicationRecordForm() {
   });
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "block" }}>
-      <fieldset
-        style={{
-          border: "1px solid #ddd",
-          padding: "0.75rem 1rem 1rem",
-          marginBottom: "1rem",
-        }}
-      >
-        <legend style={{ padding: "0 0.4rem" }}>Who & where</legend>
-
-        <label htmlFor="organizationId" style={labelStyle}>
-          Organization
-        </label>
-        <select
-          id="organizationId"
-          style={inputStyle}
+    <Box component="form" onSubmit={onSubmit} noValidate>
+      <SectionPaper title="Who & where">
+        <TextField
+          select
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+          label="Organization"
+          error={!!errors.organizationId}
+          helperText={errors.organizationId?.message}
           {...register("organizationId")}
         >
           <option value="">— select —</option>
@@ -215,17 +209,14 @@ export function DraftApplicationRecordForm() {
               {o.name}
             </option>
           ))}
-        </select>
-        {errors.organizationId && (
-          <div style={errorStyle}>{errors.organizationId.message}</div>
-        )}
+        </TextField>
 
-        <label htmlFor="applicatorId" style={labelStyle}>
-          Applicator
-        </label>
-        <select
-          id="applicatorId"
-          style={inputStyle}
+        <TextField
+          select
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+          label="Applicator"
+          error={!!errors.applicatorId}
+          helperText={errors.applicatorId?.message}
           {...register("applicatorId")}
         >
           <option value="">— select —</option>
@@ -234,298 +225,171 @@ export function DraftApplicationRecordForm() {
               {a.applicatorName} — {a.contractorCompanyName}
             </option>
           ))}
-        </select>
-        {errors.applicatorId && (
-          <div style={errorStyle}>{errors.applicatorId.message}</div>
-        )}
+        </TextField>
 
-        <label htmlFor="farmId" style={labelStyle}>
-          Farm
-        </label>
-        <select id="farmId" style={inputStyle} {...register("farmId")}>
+        <TextField
+          select
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+          label="Farm"
+          error={!!errors.farmId}
+          helperText={errors.farmId?.message}
+          {...register("farmId")}
+        >
           <option value="">— select —</option>
           {farms.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
             </option>
           ))}
-        </select>
-        {errors.farmId && <div style={errorStyle}>{errors.farmId.message}</div>}
+        </TextField>
 
-        <label htmlFor="fieldId" style={labelStyle}>
-          Field
-        </label>
-        <select id="fieldId" style={inputStyle} {...register("fieldId")}>
+        <TextField
+          select
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+          label="Field"
+          error={!!errors.fieldId}
+          helperText={errors.fieldId?.message}
+          {...register("fieldId")}
+        >
           <option value="">— select —</option>
           {fieldsForFarm.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
             </option>
           ))}
-        </select>
-        {errors.fieldId && (
-          <div style={errorStyle}>{errors.fieldId.message}</div>
-        )}
+        </TextField>
 
-        <label htmlFor="cropOrSite" style={labelStyle}>
-          Crop or site
-        </label>
-        <input
-          id="cropOrSite"
-          type="text"
-          style={inputStyle}
+        <TextField
+          label="Crop or site"
+          error={!!errors.cropOrSite}
+          helperText={errors.cropOrSite?.message}
           {...register("cropOrSite")}
         />
-        {errors.cropOrSite && (
-          <div style={errorStyle}>{errors.cropOrSite.message}</div>
-        )}
 
-        <label htmlFor="acresTreated" style={labelStyle}>
-          Acres treated
-        </label>
-        <input
-          id="acresTreated"
-          type="text"
-          inputMode="decimal"
-          style={inputStyle}
+        <TextField
+          label="Acres treated"
+          slotProps={{ htmlInput: { inputMode: "decimal" } }}
+          error={!!errors.acresTreated}
+          helperText={errors.acresTreated?.message}
           {...register("acresTreated")}
         />
-        {errors.acresTreated && (
-          <div style={errorStyle}>{errors.acresTreated.message}</div>
-        )}
-      </fieldset>
+      </SectionPaper>
 
-      <fieldset
-        style={{
-          border: "1px solid #ddd",
-          padding: "0.75rem 1rem 1rem",
-          marginBottom: "1rem",
-        }}
-      >
-        <legend style={{ padding: "0 0.4rem" }}>Product</legend>
-
-        <label htmlFor="productId" style={labelStyle}>
-          Product
-        </label>
-        <select id="productId" style={inputStyle} {...register("productId")}>
+      <SectionPaper title="Product">
+        <TextField
+          select
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+          label="Product"
+          error={!!errors.productId}
+          helperText={errors.productId?.message}
+          {...register("productId")}
+        >
           <option value="">— select —</option>
           {products.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} — EPA {p.epaRegistrationNumber} — RUP: {p.rupStatus}
             </option>
           ))}
-        </select>
-        {errors.productId && (
-          <div style={errorStyle}>{errors.productId.message}</div>
-        )}
-        <p style={{ fontSize: "0.8rem", color: "#666", marginTop: "0.4rem" }}>
+        </TextField>
+        <Typography variant="caption" color="text.secondary">
           RUP status is captured as a fact at submit time. FieldLog does not
           decide whether you may legally apply a product.
-        </p>
-      </fieldset>
+        </Typography>
+      </SectionPaper>
 
-      <fieldset
-        style={{
-          border: "1px solid #ddd",
-          padding: "0.75rem 1rem 1rem",
-          marginBottom: "1rem",
-        }}
-      >
-        <legend style={{ padding: "0 0.4rem" }}>Application details</legend>
-
-        <label htmlFor="applicationDate" style={labelStyle}>
-          Application date
-        </label>
-        <input
-          id="applicationDate"
+      <SectionPaper title="Application details">
+        <TextField
           type="date"
-          style={inputStyle}
+          label="Application date"
+          slotProps={{ inputLabel: { shrink: true } }}
+          error={!!errors.applicationDate}
+          helperText={errors.applicationDate?.message}
           {...register("applicationDate")}
         />
-        {errors.applicationDate && (
-          <div style={errorStyle}>{errors.applicationDate.message}</div>
-        )}
-
-        <label htmlFor="startTime" style={labelStyle}>
-          Start time
-        </label>
-        <input
-          id="startTime"
+        <TextField
           type="time"
-          style={inputStyle}
+          label="Start time"
+          slotProps={{ inputLabel: { shrink: true } }}
+          error={!!errors.startTime}
+          helperText={errors.startTime?.message}
           {...register("startTime")}
         />
-        {errors.startTime && (
-          <div style={errorStyle}>{errors.startTime.message}</div>
-        )}
-
-        <label htmlFor="endTime" style={labelStyle}>
-          End time (optional)
-        </label>
-        <input
-          id="endTime"
+        <TextField
           type="time"
-          style={inputStyle}
+          label="End time (optional)"
+          slotProps={{ inputLabel: { shrink: true } }}
           {...register("endTime")}
         />
-
-        <label htmlFor="applicationMethod" style={labelStyle}>
-          Application method
-        </label>
-        <input
-          id="applicationMethod"
-          type="text"
-          style={inputStyle}
+        <TextField
+          label="Application method"
           placeholder="e.g. Ground broadcast"
+          error={!!errors.applicationMethod}
+          helperText={errors.applicationMethod?.message}
           {...register("applicationMethod")}
         />
-        {errors.applicationMethod && (
-          <div style={errorStyle}>{errors.applicationMethod.message}</div>
-        )}
-
-        <label htmlFor="rateApplied" style={labelStyle}>
-          Rate applied
-        </label>
-        <input
-          id="rateApplied"
-          type="text"
-          style={inputStyle}
+        <TextField
+          label="Rate applied"
           placeholder="e.g. 1 qt/ac"
+          error={!!errors.rateApplied}
+          helperText={errors.rateApplied?.message}
           {...register("rateApplied")}
         />
-        {errors.rateApplied && (
-          <div style={errorStyle}>{errors.rateApplied.message}</div>
-        )}
-
-        <label htmlFor="totalAmountApplied" style={labelStyle}>
-          Total amount applied
-        </label>
-        <input
-          id="totalAmountApplied"
-          type="text"
-          style={inputStyle}
+        <TextField
+          label="Total amount applied"
           placeholder="e.g. 10 gal"
+          error={!!errors.totalAmountApplied}
+          helperText={errors.totalAmountApplied?.message}
           {...register("totalAmountApplied")}
         />
-        {errors.totalAmountApplied && (
-          <div style={errorStyle}>{errors.totalAmountApplied.message}</div>
-        )}
-
-        <label htmlFor="targetPest" style={labelStyle}>
-          Target pest (optional)
-        </label>
-        <input
-          id="targetPest"
-          type="text"
-          style={inputStyle}
+        <TextField
+          label="Target pest (optional)"
           {...register("targetPest")}
         />
+        <TextField label="PHI (optional)" {...register("phi")} />
+      </SectionPaper>
 
-        <label htmlFor="phi" style={labelStyle}>
-          PHI (optional)
-        </label>
-        <input id="phi" type="text" style={inputStyle} {...register("phi")} />
-      </fieldset>
-
-      <fieldset
-        style={{
-          border: "1px solid #ddd",
-          padding: "0.75rem 1rem 1rem",
-          marginBottom: "1rem",
-        }}
-      >
-        <legend style={{ padding: "0 0.4rem" }}>Conditions</legend>
-
-        <label htmlFor="temperature" style={labelStyle}>
-          Temperature
-        </label>
-        <input
-          id="temperature"
-          type="text"
-          style={inputStyle}
+      <SectionPaper title="Conditions">
+        <TextField
+          label="Temperature"
           placeholder="e.g. 72F"
           {...register("temperature")}
         />
-        {errors.temperature && (
-          <div style={errorStyle}>{errors.temperature.message}</div>
-        )}
-
-        <label htmlFor="windSpeed" style={labelStyle}>
-          Wind speed
-        </label>
-        <input
-          id="windSpeed"
-          type="text"
-          style={inputStyle}
+        <TextField
+          label="Wind speed"
           placeholder="e.g. 5 mph"
           {...register("windSpeed")}
         />
-        {errors.windSpeed && (
-          <div style={errorStyle}>{errors.windSpeed.message}</div>
-        )}
-
-        <label htmlFor="windDirection" style={labelStyle}>
-          Wind direction
-        </label>
-        <input
-          id="windDirection"
-          type="text"
-          style={inputStyle}
+        <TextField
+          label="Wind direction"
           placeholder="e.g. S"
           {...register("windDirection")}
         />
-        {errors.windDirection && (
-          <div style={errorStyle}>{errors.windDirection.message}</div>
-        )}
-
-        <label htmlFor="weatherNotes" style={labelStyle}>
-          Weather notes (optional)
-        </label>
-        <input
-          id="weatherNotes"
-          type="text"
-          style={inputStyle}
+        <TextField
+          label="Weather notes (optional)"
           {...register("weatherNotes")}
         />
-      </fieldset>
+      </SectionPaper>
 
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "0.75rem",
-        }}
-      >
-        <input type="checkbox" {...register("attestationConfirmed")} />
-        <span>
-          I attest these inputs are accurate to the best of my knowledge.
-          (Required to submit later; not required to save a draft.)
-        </span>
-      </label>
+      <FormControlLabel
+        sx={{ mb: 1.5 }}
+        control={<Checkbox {...register("attestationConfirmed")} />}
+        label="I attest these inputs are accurate to the best of my knowledge. (Required to submit later; not required to save a draft.)"
+      />
 
-      <button
-        type="submit"
-        disabled={submitState.kind === "saving"}
-        style={{
-          padding: "0.5rem 1rem",
-          fontSize: "1rem",
-          cursor: submitState.kind === "saving" ? "not-allowed" : "pointer",
-        }}
-      >
+      <Button type="submit" disabled={submitState.kind === "saving"}>
         {submitState.kind === "saving" ? "Saving…" : "Save draft"}
-      </button>
+      </Button>
 
       {submitState.kind === "saved" && (
-        <div style={{ color: "#0a6", marginTop: "0.5rem" }}>
+        <Alert severity="success" sx={{ mt: 1.5 }}>
           Draft saved (id: <code>{submitState.recordId}</code>).
-        </div>
+        </Alert>
       )}
       {submitState.kind === "error" && (
-        <div style={{ color: "#b00020", marginTop: "0.5rem" }}>
+        <Alert severity="error" sx={{ mt: 1.5 }}>
           {submitState.message}
-        </div>
+        </Alert>
       )}
-    </form>
+    </Box>
   );
 }
