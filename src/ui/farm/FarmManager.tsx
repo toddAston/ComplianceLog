@@ -4,6 +4,7 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
+import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -17,7 +18,10 @@ export type FarmManagerProps = {
 
 export function FarmManager({ organizationId }: FarmManagerProps) {
   const farms = useAllFarms();
-  const myFarms = farms.filter((f) => f.organizationId === organizationId);
+  const myFarms = farms
+    .filter((f) => f.organizationId === organizationId)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const [draftName, setDraftName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -96,75 +100,107 @@ export function FarmManager({ organizationId }: FarmManagerProps) {
 
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="subtitle1" component="h3" sx={{ mb: 1 }}>
-            Farms ({myFarms.length})
-          </Typography>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{ alignItems: "baseline", mb: 1.5 }}
+          >
+            <Typography variant="subtitle1" component="h3">
+              Farms
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              ({myFarms.length})
+            </Typography>
+          </Stack>
+
           {myFarms.length === 0 ? (
             <Alert severity="info" data-testid="farm-list-empty">
               No farms yet. Add one above.
             </Alert>
           ) : (
-            <Stack spacing={1} data-testid="farm-list">
-              {myFarms.map((f) => (
-                <Card key={f.id} variant="outlined" data-testid={`farm-row-${f.id}`}>
-                  <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-                    {renameTargetId === f.id ? (
-                      <Stack spacing={1}>
-                        <TextField
-                          label="Rename farm"
-                          value={renameDraft}
-                          onChange={(e) => setRenameDraft(e.target.value)}
-                          error={!!renameError}
-                          helperText={renameError ?? undefined}
-                          slotProps={{
-                            htmlInput: { "aria-label": `Rename ${f.name}` },
+            <Stack spacing={1.5} data-testid="farm-list">
+              {myFarms.map((f) => {
+                const isRenaming = renameTargetId === f.id;
+                return (
+                  <Card
+                    key={f.id}
+                    variant="outlined"
+                    data-testid={`farm-row-${f.id}`}
+                    sx={{
+                      bgcolor: "background.default",
+                      borderColor: isRenaming ? "primary.main" : "divider",
+                    }}
+                  >
+                    <CardContent sx={{ "&:last-child": { pb: 2 } }}>
+                      {isRenaming ? (
+                        <Stack spacing={1}>
+                          <TextField
+                            label="Rename farm"
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            error={!!renameError}
+                            helperText={renameError ?? undefined}
+                            slotProps={{
+                              htmlInput: { "aria-label": `Rename ${f.name}` },
+                            }}
+                          />
+                          <Stack direction="row" spacing={1}>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => submitRename(f.id)}
+                              disabled={renameDraft.trim().length === 0}
+                            >
+                              Save
+                            </Button>
+                            <Button size="small" onClick={cancelRename}>
+                              Cancel
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      ) : (
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 1,
                           }}
-                        />
-                        <Stack direction="row" spacing={1}>
+                        >
+                          <Typography
+                            variant="h6"
+                            component="div"
+                            sx={{
+                              flex: 1,
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {f.name}
+                          </Typography>
                           <Button
                             size="small"
-                            variant="contained"
-                            onClick={() => submitRename(f.id)}
-                            disabled={renameDraft.trim().length === 0}
+                            variant="outlined"
+                            onClick={() => beginRename(f.id, f.name)}
+                            sx={{ flexShrink: 0 }}
                           >
-                            Save
-                          </Button>
-                          <Button size="small" onClick={cancelRename}>
-                            Cancel
+                            Rename
                           </Button>
                         </Stack>
-                      </Stack>
-                    ) : (
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        sx={{
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <Box>
-                          <Typography variant="body1">{f.name}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            id: {f.id}
-                          </Typography>
-                        </Box>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => beginRename(f.id, f.name)}
-                        >
-                          Rename
-                        </Button>
-                      </Stack>
-                    )}
-                    <FieldsForFarm
-                      organizationId={organizationId}
-                      farmId={f.id}
-                    />
-                  </CardContent>
-                </Card>
-              ))}
+                      )}
+                      <Divider sx={{ my: 1.5 }} />
+                      <FieldsForFarm
+                        organizationId={organizationId}
+                        farmId={f.id}
+                      />
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </Stack>
           )}
         </CardContent>

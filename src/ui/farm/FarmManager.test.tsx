@@ -65,6 +65,20 @@ describe("FarmManager", () => {
     expect(await db.farms.count()).toBe(1);
   });
 
+  it("does not leak the raw farm id into the farm row UI", async () => {
+    await db.farms.add({
+      id: "farm-debug-xyz",
+      organizationId: ORG,
+      name: "Visible Farm",
+      createdAt: new Date().toISOString(),
+    });
+    render(<FarmManager organizationId={ORG} />);
+
+    expect(await screen.findByText("Visible Farm")).toBeTruthy();
+    expect(screen.queryByText(/^id:/)).toBeNull();
+    expect(screen.queryByText(/farm-debug-xyz/)).toBeNull();
+  });
+
   it("only lists farms for the active organization", async () => {
     await db.farms.bulkAdd([
       {

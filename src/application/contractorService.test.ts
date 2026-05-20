@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../db/fieldlogDb";
 import { inviteContractor } from "./contractorService";
 
@@ -6,6 +6,10 @@ const ORG = "org-test";
 
 beforeEach(async () => {
   await Promise.all(db.tables.map((t) => t.clear()));
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("inviteContractor", () => {
@@ -93,6 +97,55 @@ describe("inviteContractor", () => {
       contractorCompanyName: "Jane Co",
     });
     expect(await db.applicators.count()).toBe(2);
+  });
+
+  it("uses the default invite base URL when VITE_INVITE_BASE_URL is unset", async () => {
+    vi.stubEnv("VITE_INVITE_BASE_URL", "");
+    const result = await inviteContractor({
+      organizationId: ORG,
+      applicatorName: "Default",
+      contractorCompanyName: "Co",
+    });
+    expect(result.inviteLink).toBe(
+      `https://fieldlog.invite/${result.inviteToken}`
+    );
+  });
+
+  it("uses VITE_INVITE_BASE_URL when set", async () => {
+    vi.stubEnv("VITE_INVITE_BASE_URL", "https://staging.fieldlog.app/invite");
+    const result = await inviteContractor({
+      organizationId: ORG,
+      applicatorName: "Override",
+      contractorCompanyName: "Co",
+    });
+    expect(result.inviteLink).toBe(
+      `https://staging.fieldlog.app/invite/${result.inviteToken}`
+    );
+  });
+
+  it("strips trailing slashes from VITE_INVITE_BASE_URL", async () => {
+    vi.stubEnv("VITE_INVITE_BASE_URL", "https://example.com/path//");
+    const result = await inviteContractor({
+      organizationId: ORG,
+      applicatorName: "Trim",
+      contractorCompanyName: "Co",
+    });
+    expect(result.inviteLink).toBe(
+      `https://example.com/path/${result.inviteToken}`
+    );
+    expect(result.inviteLink).not.toContain("//" + result.inviteToken);
+  });
+
+  it("falls back to the default when VITE_INVITE_BASE_URL is whitespace-only", async () => {
+    vi.stubEnv("VITE_INVITE_BASE_URL", "   ");
+    const result = await inviteContractor({
+      organizationId: ORG,
+      applicatorName: "Whitespace",
+      contractorCompanyName: "Co",
+    });
+    expect(result.inviteLink).toBe(
+      `https://fieldlog.invite/${result.inviteToken}`
+    );
   });
 
   it("produces distinct invite tokens across two invites", async () => {

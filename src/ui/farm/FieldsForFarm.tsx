@@ -2,6 +2,7 @@ import { useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -15,7 +16,10 @@ export type FieldsForFarmProps = {
 
 export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
   const allFields = useAllFields();
-  const fields = allFields.filter((f) => f.farmId === farmId);
+  const fields = allFields
+    .filter((f) => f.farmId === farmId)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const [name, setName] = useState("");
   const [acres, setAcres] = useState("");
@@ -65,35 +69,51 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
   };
 
   return (
-    <Box
-      data-testid={`fields-for-farm-${farmId}`}
-      sx={{ mt: 1, pl: 1, borderLeft: "2px solid", borderColor: "divider" }}
-    >
-      <Typography variant="caption" color="text.secondary">
-        Fields ({fields.length})
-      </Typography>
+    <Box data-testid={`fields-for-farm-${farmId}`}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{ alignItems: "baseline", mb: 1 }}
+      >
+        <Typography variant="subtitle2" component="h4">
+          Fields
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          ({fields.length})
+        </Typography>
+      </Stack>
+
       {fields.length === 0 ? (
         <Alert
           severity="info"
-          sx={{ mt: 0.5, mb: 1 }}
+          variant="outlined"
+          sx={{ mb: 1.5, py: 0.5 }}
           data-testid={`fields-empty-${farmId}`}
         >
           No fields yet.
         </Alert>
       ) : (
         <Stack
-          spacing={0.5}
-          sx={{ mt: 0.5, mb: 1 }}
+          spacing={0.75}
+          sx={{ mb: 1.5 }}
           data-testid={`field-list-${farmId}`}
         >
           {fields.map((f) => (
             <Box
               key={f.id}
               data-testid={`field-row-${f.id}`}
-              sx={{ display: "flex", alignItems: "center", gap: 1 }}
+              sx={{
+                px: 1,
+                py: 0.75,
+                borderRadius: 1,
+                bgcolor: "background.paper",
+                border: "1px solid",
+                borderColor: "divider",
+                "&:hover": { borderColor: "text.secondary" },
+              }}
             >
               {renameTargetId === f.id ? (
-                <Stack direction="row" spacing={1} sx={{ flex: 1 }}>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
                   <TextField
                     size="small"
                     value={renameDraft}
@@ -103,6 +123,7 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                     slotProps={{
                       htmlInput: { "aria-label": `Rename ${f.name}` },
                     }}
+                    sx={{ flex: "1 1 180px" }}
                   />
                   <Button
                     size="small"
@@ -123,12 +144,46 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                   </Button>
                 </Stack>
               ) : (
-                <>
-                  <Typography variant="body2" sx={{ flex: 1 }}>
-                    {f.name}
-                    {f.defaultCropOrSite ? ` — ${f.defaultCropOrSite}` : ""}
-                    {f.defaultAcres != null ? ` (${f.defaultAcres} ac)` : ""}
-                  </Typography>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{ alignItems: "center", gap: 1 }}
+                >
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 500,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {f.name}
+                    </Typography>
+                    {(f.defaultCropOrSite || f.defaultAcres != null) && (
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        sx={{ mt: 0.5, flexWrap: "wrap" }}
+                      >
+                        {f.defaultCropOrSite && (
+                          <Chip
+                            size="small"
+                            label={f.defaultCropOrSite}
+                            variant="outlined"
+                          />
+                        )}
+                        {f.defaultAcres != null && (
+                          <Chip
+                            size="small"
+                            label={`${f.defaultAcres} ac`}
+                            variant="outlined"
+                          />
+                        )}
+                      </Stack>
+                    )}
+                  </Box>
                   <Button
                     size="small"
                     onClick={() => {
@@ -136,21 +191,39 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                       setRenameDraft(f.name);
                       setRenameError(null);
                     }}
+                    sx={{ flexShrink: 0 }}
                   >
                     Rename
                   </Button>
-                </>
+                </Stack>
               )}
             </Box>
           ))}
         </Stack>
       )}
 
-      <Box component="form" onSubmit={onCreate}>
+      <Box
+        component="form"
+        onSubmit={onCreate}
+        sx={{
+          p: 1,
+          borderRadius: 1,
+          border: "1px dashed",
+          borderColor: "divider",
+          bgcolor: "background.paper",
+        }}
+      >
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mb: 0.75 }}
+        >
+          Add a field
+        </Typography>
         <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
           <TextField
             size="small"
-            label="New field name"
+            label="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             error={!!createError}
@@ -158,6 +231,7 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
             slotProps={{
               htmlInput: { "aria-label": `New field name for farm ${farmId}` },
             }}
+            sx={{ flex: "1 1 140px" }}
           />
           <TextField
             size="small"
@@ -170,6 +244,7 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                 "aria-label": `Acres for new field on farm ${farmId}`,
               },
             }}
+            sx={{ flex: "0 1 90px" }}
           />
           <TextField
             size="small"
@@ -181,6 +256,7 @@ export function FieldsForFarm({ organizationId, farmId }: FieldsForFarmProps) {
                 "aria-label": `Crop for new field on farm ${farmId}`,
               },
             }}
+            sx={{ flex: "1 1 120px" }}
           />
           <Button
             type="submit"

@@ -4,6 +4,14 @@ import type { Applicator } from "../domain/types";
 const id = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 
+const DEFAULT_INVITE_BASE_URL = "https://fieldlog.invite";
+
+function resolveInviteBaseUrl(): string {
+  const raw = import.meta.env.VITE_INVITE_BASE_URL?.trim();
+  const base = raw && raw.length > 0 ? raw : DEFAULT_INVITE_BASE_URL;
+  return base.replace(/\/+$/, "");
+}
+
 export type InviteContractorInput = {
   organizationId: string;
   applicatorName: string;
@@ -63,7 +71,7 @@ export async function inviteContractor(
   await db.applicators.add(applicator);
 
   const inviteToken = id();
-  const inviteLink = `https://fieldlog.invite/${inviteToken}`;
+  const inviteLink = `${resolveInviteBaseUrl()}/${inviteToken}`;
 
   return { applicator, inviteToken, inviteLink };
 }
