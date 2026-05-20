@@ -184,6 +184,24 @@ temp/
 # Large data files (commit via Git LFS or keep local-only)
 data/raw/epa/apprildatadump_public.xlsx
 
+# Bulk validation/research PDFs and downloaded archives — keep local, do not commit
+docs/00_*.pdf
+docs/01_*.pdf
+docs/02_*.pdf
+docs/03_*.pdf
+docs/04_*.pdf
+docs/05_*.pdf
+docs/06_*.pdf
+docs/07_*.pdf
+docs/08_*.pdf
+docs/09_*.pdf
+docs/10_*.pdf
+docs/13_*.pdf
+docs/14_*.pdf
+docs/11_landing-page_v1/
+docs/drive-download-*/
+docs/drive-download-*.zip
+
 # External vendor documentation/source clones (cloned via scripts/clone-reference-docs.cmd)
 reference/vendor-docs/
 .npmrc
