@@ -38,16 +38,36 @@ describe("SyncControls", () => {
     expect(screen.getByTestId("sync-now-button")).toBeTruthy();
   });
 
-  it("auto-flushes queued records to synced when online", async () => {
+  it("auto-flushes queued records to synced when online (opt-in via autoFlush)", async () => {
     const submitted = await seedQueuedRecord();
     expect((await db.applicationRecords.get(submitted.id))?.syncStatus).toBe("queued");
 
-    render(<SyncControls transport={createLoopbackTransport()} />);
+    // Auto-flush is opt-in (default off) so the global mount in AppHeader does
+    // not silently sync. This test verifies the auto-flush path still works
+    // when explicitly enabled.
+    render(
+      <SyncControls transport={createLoopbackTransport()} autoFlush />
+    );
 
     await waitFor(async () => {
       const after = await db.applicationRecords.get(submitted.id);
       expect(after?.syncStatus).toBe("synced");
     });
+  });
+
+  it("does NOT auto-flush queued records when mounted with default props (regression: global SyncControls mount must not silently sync)", async () => {
+    const submitted = await seedQueuedRecord();
+    expect((await db.applicationRecords.get(submitted.id))?.syncStatus).toBe(
+      "queued"
+    );
+
+    render(<SyncControls transport={createLoopbackTransport()} />);
+
+    // Wait long enough that auto-flush would have fired if it were enabled.
+    await new Promise((r) => setTimeout(r, 50));
+
+    const after = await db.applicationRecords.get(submitted.id);
+    expect(after?.syncStatus).toBe("queued");
   });
 
   it("reports nothing-to-sync when the outbox is empty", async () => {

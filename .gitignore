@@ -184,6 +184,12 @@ temp/
 # Large data files (commit via Git LFS or keep local-only)
 data/raw/epa/apprildatadump_public.xlsx
 
+# EPA CDR (TSCA Chemical Data Reporting) markdown/CSV conversions — 270 MB of
+# bulk industrial-chemical data; wrong granularity for the pesticide product
+# catalog. Keep local, do not commit. The RUP report under
+# research/regulatory/markdown_conversions/ is 1 MB and stays tracked.
+research/regulatory/cdr_markdown_conversions/
+
 # Bulk validation/research PDFs and downloaded archives — keep local, do not commit
 docs/00_*.pdf
 docs/01_*.pdf

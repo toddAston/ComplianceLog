@@ -12,6 +12,9 @@ export type ComplianceResultCode =
   | "NEEDS_REVIEW"
   | "WARNING"
   | "LABEL_VERIFICATION_REQUIRED"
+  // Reserved for cases where a rule's source-tag invariant fails at runtime;
+  // not emitted by any rule today — the sourceTags invariant test catches
+  // missing tags at build time.
   | "SOURCE_UNAVAILABLE"
   | "BLOCKED_BY_EXPLICIT_RULE";
 

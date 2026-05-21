@@ -413,8 +413,11 @@ describe("App + RecordCreatePage integration", () => {
     const user = await fillStepperDraft();
     await user.click(screen.getByRole("button", { name: /Save Draft/i }));
 
+    // RecordsListPage now renders <DraftsList />, so the heading is just
+    // "Records" (count surfaces per-row inside the list). DraftsList renders
+    // the raw `syncStatus` enum inside its chip, hence "local_only".
     expect(
-      await screen.findByRole("heading", { level: 1, name: /Records \(1\)/ })
+      await screen.findByRole("heading", { level: 1, name: /^Records$/ })
     ).toBeTruthy();
     expect(await screen.findByText("draft")).toBeTruthy();
     expect(await screen.findByText("local_only")).toBeTruthy();
@@ -425,7 +428,7 @@ describe("App + RecordCreatePage integration", () => {
 
     const user = await fillStepperDraft();
     await user.click(screen.getByRole("button", { name: /Save Draft/i }));
-    await screen.findByRole("heading", { level: 1, name: /Records \(1\)/ });
+    await screen.findByRole("heading", { level: 1, name: /^Records$/ });
 
     first.unmount();
 
@@ -433,7 +436,7 @@ describe("App + RecordCreatePage integration", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: /Records \(1\)/ })
+      await screen.findByRole("heading", { level: 1, name: /^Records$/ })
     ).toBeTruthy();
     expect(await screen.findByText("draft")).toBeTruthy();
     expect(await screen.findByText("local_only")).toBeTruthy();
@@ -662,10 +665,14 @@ describe("RecordCreatePage compliance gate", () => {
     render(<App />);
     const user = userEvent.setup();
 
-    // Walk straight to the Review step without entering anything.
-    for (let i = 0; i < 4; i++) {
-      await user.click(await screen.findByRole("button", { name: /Next/i }));
-    }
+    // Walk to the Review step with only Time End filled (now required to
+    // advance past Step 3) — every other host-tracked required field is still
+    // empty, so the gate must still fail.
+    await user.click(await screen.findByRole("button", { name: /Next/i }));
+    await user.click(await screen.findByRole("button", { name: /Next/i }));
+    await user.type(await screen.findByLabelText(/Time End/i), "11:30");
+    await user.click(await screen.findByRole("button", { name: /Next/i }));
+    await user.click(await screen.findByRole("button", { name: /Next/i }));
 
     expect(await screen.findByText(/Compliance Check Failed/i)).toBeTruthy();
     expect(screen.queryByText(/Compliance Check Passed/i)).toBeNull();
@@ -700,6 +707,9 @@ describe("RecordCreatePage compliance gate", () => {
       ).toBe(true)
     );
     await user.selectOptions(productSelect, "product-example-herbicide-4l");
+    // Acknowledge no SLN so the slnNumber field resolves to "" (operator-
+    // confirmed not applicable) and the gate can clear.
+    await user.click(screen.getByLabelText(/no Special Local Need/i));
     await user.click(screen.getByRole("button", { name: /Next/i }));
 
     // Step 3 — Application Details (date defaults to today)
@@ -725,8 +735,13 @@ describe("RecordCreatePage compliance gate", () => {
     await user.selectOptions(screen.getByLabelText(/Wind Direction/i), "NW");
     await user.click(screen.getByRole("button", { name: /Next/i }));
 
-    // Step 5 — Review
-    expect(await screen.findByText(/Compliance Check Passed/i)).toBeTruthy();
+    // Step 5 — Review. Tick the master label-review toggle so the eight
+    // LABEL_VERIFICATION_REQUIRED items clear. GPS_EVIDENCE_UNKNOWN remains a
+    // NEEDS_REVIEW item (jsdom has no navigator.geolocation), so the banner
+    // surfaces "1 item needs review" rather than "Passed" — that is the
+    // correct, expected state when GPS evidence has not been captured.
+    await user.click(await screen.findByTestId("label-reviewed-toggle"));
+    expect(await screen.findByText(/1 item needs review/i)).toBeTruthy();
     expect(screen.queryByText(/Compliance Check Failed/i)).toBeNull();
   });
 });

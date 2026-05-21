@@ -4,11 +4,23 @@ import Typography from "@mui/material/Typography";
 import { useSyncFlush } from "../../application/sync/useSyncFlush";
 import type { SyncTransport } from "../../application/sync/transport";
 
-// Mounts the single app-wide flush controller (online/foreground/periodic triggers via
-// useSyncFlush) and exposes a manual "Sync now" button. Capture/submit are never gated
-// here; only the flush is. `transport` is injectable for tests.
-export function SyncControls({ transport }: { transport?: SyncTransport }) {
-  const { state, flush, online } = useSyncFlush(transport);
+// Manual "Sync now" affordance. By default this is purely click-driven —
+// mounting the control does not trigger background flushes. Pass
+// `autoFlush={true}` to also register the online/foreground/periodic auto-flush
+// effects from `useSyncFlush`. The default is off because the global mount in
+// `AppHeader` should not silently sync the loopback transport on every page
+// load (which would flip records out of `local_only` before the operator
+// clicked Sync, hurting both tests and the demo narrative).
+export function SyncControls({
+  transport,
+  autoFlush = false,
+}: {
+  transport?: SyncTransport;
+  autoFlush?: boolean;
+}) {
+  const { state, flush, online } = useSyncFlush(transport, {
+    enableAutoFlush: autoFlush,
+  });
 
   const summaryText = (): string | null => {
     if (state.kind !== "done") return null;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -246,12 +246,26 @@ export function ReviewQueue() {
           const canRequestCorrection =
             isLockable && correctionDraft.trim().length > 0;
 
+          const openDetails = () => setSelectedRecordId(r.id);
+          const onRowKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openDetails();
+            }
+          };
+
           return (
             <Box component="li" key={r.id} sx={{ listStyle: "none" }}>
               <Card
                 variant="outlined"
                 data-testid={`queue-row-${r.id}`}
-                sx={{ bgcolor: "background.paper" }}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open details for record ${r.id.slice(0, 8)}`}
+                onClick={openDetails}
+                onKeyDown={onRowKeyDown}
+                sx={{ bgcolor: "background.paper", cursor: "pointer" }}
               >
                 <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
                   <Stack
@@ -362,13 +376,16 @@ export function ReviewQueue() {
                       <Button
                         size="small"
                         variant="text"
-                        onClick={() => setSelectedRecordId(r.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRecordId(r.id);
+                        }}
                       >
                         Details
                       </Button>
                     </Stack>
                   ) : (
-                    <Stack spacing={1.5}>
+                    <Stack spacing={1.5} onClick={(e) => e.stopPropagation()}>
                       <Box
                         sx={{
                           display: "grid",
@@ -398,7 +415,10 @@ export function ReviewQueue() {
                           <Button
                             size="small"
                             variant="contained"
-                            onClick={() => setPendingLockId(r.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingLockId(r.id);
+                            }}
                             disabled={state.kind === "locking"}
                             data-testid={`queue-lock-${r.id}`}
                           >
@@ -424,7 +444,10 @@ export function ReviewQueue() {
                           <Button
                             size="small"
                             variant="outlined"
-                            onClick={() => onRequestCorrection(r.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRequestCorrection(r.id);
+                            }}
                             disabled={
                               !canRequestCorrection ||
                               state.kind === "requesting_correction"
@@ -444,7 +467,10 @@ export function ReviewQueue() {
                         <Button
                           size="small"
                           variant="text"
-                          onClick={() => setSelectedRecordId(r.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedRecordId(r.id);
+                          }}
                         >
                           Details
                         </Button>

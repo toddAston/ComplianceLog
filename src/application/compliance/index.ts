@@ -55,7 +55,7 @@ export function runAllComplianceChecks(
     return {
       ruleId: rule.ruleId,
       severity: severityOf(rule),
-      resultCode: rule.resultCode,
+      resultCode: status === "pass" ? "OK" : rule.resultCode,
       status,
       description: rule.description,
       message: rule.message,

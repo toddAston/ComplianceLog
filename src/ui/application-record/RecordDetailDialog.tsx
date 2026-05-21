@@ -18,10 +18,16 @@ import type {
 } from "../../domain/types";
 import { useRecordEvents } from "../../db/queries";
 import {
+  runAllComplianceChecks,
   runComplianceChecks,
   type ComplianceCheckOutcome,
   type ComplianceCheckResult,
 } from "../../application/complianceRules";
+import { ComplianceChecklistPanel } from "./ComplianceChecklistPanel";
+import {
+  downloadAuditPacketJson,
+  downloadAuditPacketPdf,
+} from "../../application/auditPacketDownload";
 import { resubmitCorrectedApplicationRecord } from "../../application/applicationRecordService";
 import { DEMO_APPLICATOR_ACTOR } from "../demoSession";
 import { AuditReport } from "./AuditReport";
@@ -63,18 +69,6 @@ function eventChipColor(
 type Props = {
   record: ApplicationRecord | null;
   onClose: () => void;
-};
-
-const severityColor: Record<string, string> = {
-  blocked: "#b00020",
-  error: "#e65100",
-  warning: "#f9a825",
-};
-
-const severityIcon: Record<string, string> = {
-  blocked: "✗",
-  error: "✗",
-  warning: "⚠",
 };
 
 const statusIcon: Record<ComplianceCheckOutcome["status"], string> = {
@@ -126,6 +120,7 @@ export function RecordDetailDialog({ record, onClose }: Props) {
 
   const complianceResults: ComplianceCheckResult[] =
     runComplianceChecks(record);
+  const complianceOutcomes = runAllComplianceChecks(record);
   const isNeedsCorrection = record.workflowStatus === "needs_correction";
   const isLocked = record.workflowStatus === "locked";
 
@@ -225,33 +220,10 @@ export function RecordDetailDialog({ record, onClose }: Props) {
             </Alert>
           )}
 
-          {/* Compliance Checks */}
+          {/* Compliance Checks — grouped by matrix result code with citations. */}
           <section>
             <h3 style={{ margin: "0 0 0.5rem" }}>Compliance Checks</h3>
-            {complianceResults.length === 0 ? (
-              <p style={{ color: "#2e7d32", margin: 0 }}>
-                ✓ All checks passed
-              </p>
-            ) : (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {complianceResults.map((r) => (
-                  <li
-                    key={r.ruleId}
-                    style={{
-                      padding: "0.3rem 0",
-                      color: severityColor[r.severity],
-                    }}
-                  >
-                    <strong>{severityIcon[r.severity]}</strong> {r.message}{" "}
-                    <span
-                      style={{ fontSize: "0.8rem", color: "#666" }}
-                    >
-                      [{r.citationShort}]
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <ComplianceChecklistPanel outcomes={complianceOutcomes} />
           </section>
 
           <Divider sx={{ my: 2 }} />
@@ -574,9 +546,27 @@ export function RecordDetailDialog({ record, onClose }: Props) {
 
         <DialogActions>
           {isLocked && (
-            <Button onClick={handlePrint} variant="outlined" size="small">
-              Print Audit Report
-            </Button>
+            <>
+              <Button onClick={handlePrint} variant="outlined" size="small">
+                Print Audit Report
+              </Button>
+              <Button
+                onClick={() => downloadAuditPacketJson(record.id)}
+                variant="outlined"
+                size="small"
+                data-testid="dialog-download-json"
+              >
+                Download JSON
+              </Button>
+              <Button
+                onClick={() => downloadAuditPacketPdf(record.id)}
+                variant="outlined"
+                size="small"
+                data-testid="dialog-download-pdf"
+              >
+                Download PDF
+              </Button>
+            </>
           )}
           <Button onClick={onClose}>Close</Button>
         </DialogActions>

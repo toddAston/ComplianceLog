@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -18,6 +18,10 @@ import {
   exportLockedApplicationRecord,
   type LockedApplicationRecordExport,
 } from "../../application/applicationRecordExport";
+import {
+  downloadAuditPacketJson,
+  downloadAuditPacketPdf,
+} from "../../application/auditPacketDownload";
 import { runComplianceChecks } from "../../application/complianceRules";
 import { computeDraftSubmissionWindow } from "../../application/draftSubmissionWindow";
 import type { ApplicationRecord } from "../../domain/types";
@@ -137,6 +141,22 @@ export function DraftsList() {
     clearRowState(recordId);
   };
 
+  const onDownloadJson = async (recordId: string) => {
+    try {
+      await downloadAuditPacketJson(recordId);
+    } catch (err) {
+      setRowError(recordId, err);
+    }
+  };
+
+  const onDownloadPdf = async (recordId: string) => {
+    try {
+      await downloadAuditPacketPdf(recordId);
+    } catch (err) {
+      setRowError(recordId, err);
+    }
+  };
+
   const onRequestCorrection = async (recordId: string) => {
     const notes = correctionNotes[recordId]?.trim();
     if (!notes) return;
@@ -226,9 +246,27 @@ export function DraftsList() {
           const submissionChipColor: WorkflowChipColor =
             submissionWindow?.severity === "error" ? "error" : "warning";
 
+          const openDetails = () => setSelectedRecordId(r.id);
+          const onRowKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openDetails();
+            }
+          };
+
           return (
             <Box component="li" key={r.id} sx={{ listStyle: "none" }}>
-              <Card variant="outlined">
+              <Card
+                variant="outlined"
+                role="button"
+                tabIndex={0}
+                aria-label={`Open details for record ${r.id.slice(0, 8)}`}
+                onClick={openDetails}
+                onKeyDown={onRowKeyDown}
+                sx={{ cursor: "pointer" }}
+                data-testid={`draft-row-${r.id}`}
+              >
                 <CardContent>
                   <Stack
                     direction="row"
@@ -293,7 +331,10 @@ export function DraftsList() {
                     <Button
                       size="small"
                       variant="text"
-                      onClick={() => setSelectedRecordId(r.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRecordId(r.id);
+                      }}
                     >
                       Details
                     </Button>
@@ -304,10 +345,14 @@ export function DraftsList() {
                       direction="row"
                       spacing={1.5}
                       sx={{ alignItems: "center", flexWrap: "wrap" }}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <Button
                         size="small"
-                        onClick={() => onSubmit(r.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSubmit(r.id);
+                        }}
                         disabled={
                           !canSubmit || state.kind === "submitting"
                         }
@@ -333,19 +378,44 @@ export function DraftsList() {
                   )}
 
                   {isLocked && (
-                    <Stack spacing={1}>
+                    <Stack spacing={1} onClick={(e) => e.stopPropagation()}>
                       {state.kind !== "exported" && (
-                        <Box>
+                        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
                           <Button
                             size="small"
-                            onClick={() => onViewExport(r.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onViewExport(r.id);
+                            }}
                             disabled={state.kind === "exporting"}
                           >
                             {state.kind === "exporting"
                               ? "Loading…"
                               : "View export"}
                           </Button>
-                        </Box>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            data-testid={`download-json-${r.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDownloadJson(r.id);
+                            }}
+                          >
+                            Download JSON
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            data-testid={`download-pdf-${r.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDownloadPdf(r.id);
+                            }}
+                          >
+                            Download PDF
+                          </Button>
+                        </Stack>
                       )}
                       {state.kind === "exported" && (
                         <>
@@ -364,7 +434,10 @@ export function DraftsList() {
                             <Button
                               size="small"
                               variant="outlined"
-                              onClick={() => onCloseExport(r.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onCloseExport(r.id);
+                              }}
                             >
                               Close
                             </Button>
@@ -394,7 +467,7 @@ export function DraftsList() {
                   )}
 
                   {isPendingReview && showManagerAffordances && (
-                    <Stack spacing={1.5}>
+                    <Stack spacing={1.5} onClick={(e) => e.stopPropagation()}>
                       <Stack
                         direction="row"
                         spacing={1}
@@ -417,7 +490,10 @@ export function DraftsList() {
                         />
                         <Button
                           size="small"
-                          onClick={() => onLock(r.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onLock(r.id);
+                          }}
                           disabled={state.kind === "locking"}
                         >
                           {state.kind === "locking" ? "Locking…" : "Lock"}
@@ -446,7 +522,10 @@ export function DraftsList() {
                         <Button
                           size="small"
                           variant="outlined"
-                          onClick={() => onRequestCorrection(r.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRequestCorrection(r.id);
+                          }}
                           disabled={
                             !canRequestCorrection ||
                             state.kind === "requesting_correction"

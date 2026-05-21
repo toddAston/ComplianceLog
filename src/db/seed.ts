@@ -7,6 +7,7 @@ import type {
   Product,
   User,
 } from "../domain/types";
+import { buildRupProductSeed } from "./seedRupProducts";
 
 const now = () => new Date().toISOString();
 
@@ -78,6 +79,11 @@ export async function seedDemoData() {
     createdAt: now(),
   };
 
+  // Curated EPA RUP report rows — gives the product picker real names, real
+  // EPA reg numbers, and real manufacturers so the RUP_UNCERTIFIED compliance
+  // check fires against authentic products in the demo.
+  const rupProducts = buildRupProductSeed(now());
+
   await db.transaction(
     "rw",
     [db.organizations, db.users, db.farms, db.fields, db.applicators, db.products],
@@ -88,6 +94,7 @@ export async function seedDemoData() {
       await db.fields.add(field);
       await db.applicators.add(applicator);
       await db.products.add(product);
+      await db.products.bulkAdd(rupProducts);
     }
   );
 }

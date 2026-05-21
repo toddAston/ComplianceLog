@@ -181,38 +181,40 @@ function RecordCard({ record }: { record: ApplicationRecord }) {
   const colors = statusColors[record.workflowStatus] || statusColors.draft;
 
   return (
-    <div style={{
-      backgroundColor: "var(--color-surface)",
-      border: "1px solid var(--color-border)",
-      borderRadius: 8,
-      padding: 16,
-      boxShadow: "var(--shadow-card)",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      transition: "box-shadow 200ms ease-out",
-      cursor: "pointer",
-    }}>
-      <div>
-        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text)" }}>
-          {record.contractorInputs.applicationDate || "No date"}
-        </div>
-        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
-          {record.contractorInputs.fieldName || `ID: ${record.id.slice(0, 8)}...`}
-        </div>
-      </div>
-      <span style={{
-        fontSize: 11,
-        fontWeight: 500,
-        padding: "4px 10px",
-        borderRadius: 9999,
-        backgroundColor: colors.bg,
-        color: colors.text,
-        textTransform: "capitalize",
+    <Link to="/records" style={{ textDecoration: "none", color: "inherit" }}>
+      <div style={{
+        backgroundColor: "var(--color-surface)",
+        border: "1px solid var(--color-border)",
+        borderRadius: 8,
+        padding: 16,
+        boxShadow: "var(--shadow-card)",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        transition: "box-shadow 200ms ease-out",
+        cursor: "pointer",
       }}>
-        {record.workflowStatus.replace("_", " ")}
-      </span>
-    </div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text)" }}>
+            {record.contractorInputs.applicationDate || "No date"}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
+            {record.contractorInputs.fieldName || `ID: ${record.id.slice(0, 8)}...`}
+          </div>
+        </div>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 500,
+          padding: "4px 10px",
+          borderRadius: 9999,
+          backgroundColor: colors.bg,
+          color: colors.text,
+          textTransform: "capitalize",
+        }}>
+          {record.workflowStatus.replace("_", " ")}
+        </span>
+      </div>
+    </Link>
   );
 }
 

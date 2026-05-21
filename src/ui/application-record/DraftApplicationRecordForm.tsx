@@ -1,3 +1,11 @@
+// DEPRECATED (commit 5ec0d8f): replaced as the live create flow by
+// `src/ui/pages/RecordCreatePage.tsx`. This component is no longer
+// imported by any production code — only by test files (its own
+// DraftApplicationRecordForm.test.tsx and RecordCreatePage.rupCatalog.test.tsx
+// which uses it as a convenience product-picker harness). Kept because
+// it carries features RecordCreatePage doesn't (RHF validation, NWS
+// weather adapter wiring) that may be re-adopted. Do NOT extend this
+// component; build new features on RecordCreatePage instead.
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

@@ -105,7 +105,7 @@ export function LoginPage() {
           </form>
 
           <div style={{ textAlign: "center", marginTop: 16 }}>
-            <a href="/forgot-password" style={{ fontSize: 12, color: "var(--color-primary)", textDecoration: "none" }}>
+            <a href="#" onClick={(e) => e.preventDefault()} style={{ fontSize: 12, color: "var(--color-primary)", textDecoration: "none" }}>
               Forgot password?
             </a>
           </div>

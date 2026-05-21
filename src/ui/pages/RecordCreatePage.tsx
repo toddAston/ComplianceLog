@@ -9,11 +9,27 @@ import {
 } from "../../db/queries";
 import { createDraftApplicationRecord } from "../../application/applicationRecordService";
 import { runAllComplianceChecks } from "../../application/complianceRules";
+import { ComplianceChecklistPanel } from "../application-record/ComplianceChecklistPanel";
 import { useSession } from "../session/SessionContext";
 import { DEMO_ORG_ID } from "../../db/seed";
-import type { ApplicationRecord, ContractorInputs } from "../../domain/types";
+import type {
+  ApplicationRecord,
+  ApplicatorCategory,
+  ContractorInputs,
+} from "../../domain/types";
 
 const STEP_LABELS = ["Farm & Field", "Product", "Application Details", "Weather", "Review & Attest"];
+
+const APPLICATOR_CATEGORY_OPTIONS: { value: ApplicatorCategory; label: string }[] = [
+  { value: "certified_commercial", label: "Certified Commercial" },
+  { value: "certified_noncommercial", label: "Certified Noncommercial" },
+  { value: "public_operator", label: "Public Operator" },
+  { value: "private", label: "Private" },
+  { value: "noncertified", label: "Noncertified" },
+  { value: "noncertified_rup", label: "Noncertified (RUP)" },
+  { value: "technician", label: "Technician" },
+  { value: "trainee", label: "Trainee" },
+];
 
 export function RecordCreatePage() {
   const navigate = useNavigate();
@@ -27,7 +43,10 @@ export function RecordCreatePage() {
   // Form state
   const [farmId, setFarmId] = useState("");
   const [fieldId, setFieldId] = useState("");
+  const [applicatorCategory, setApplicatorCategory] =
+    useState<ApplicatorCategory>("certified_commercial");
   const [productId, setProductId] = useState("");
+  const [noSln, setNoSln] = useState(false);
   const [dateApplied, setDateApplied] = useState(new Date().toISOString().split("T")[0]);
   const [timeStart, setTimeStart] = useState("");
   const [timeEnd, setTimeEnd] = useState("");
@@ -38,8 +57,12 @@ export function RecordCreatePage() {
   const [weatherTemp, setWeatherTemp] = useState("");
   const [weatherWind, setWeatherWind] = useState("");
   const [weatherWindDir, setWeatherWindDir] = useState("");
+  const [gpsCoords, setGpsCoords] = useState<{ lat: string; lng: string } | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsCapturing, setGpsCapturing] = useState(false);
   const [requesterName, setRequesterName] = useState("");
   const [requesterAddress, setRequesterAddress] = useState("");
+  const [labelReviewed, setLabelReviewed] = useState(false);
   const [attested, setAttested] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -54,6 +77,9 @@ export function RecordCreatePage() {
   // farm/field/product so the Review step can preview compliance live.
   const buildContractorInputs = (): ContractorInputs => {
     const applicator = applicators[0];
+    const hasWeather = Boolean(weatherTemp || weatherWind);
+    const todayYmd = new Date().toISOString().split("T")[0];
+    const epaReg = selectedProduct?.epaRegistrationNumber ?? "";
     return {
       applicatorId: applicator?.id ?? actor.userId,
       applicatorName: applicator?.applicatorName ?? actor.displayName,
@@ -69,7 +95,7 @@ export function RecordCreatePage() {
 
       productId: selectedProduct?.id,
       productName: selectedProduct?.name ?? "",
-      epaRegistrationNumber: selectedProduct?.epaRegistrationNumber ?? "",
+      epaRegistrationNumber: epaReg,
       rupStatus: selectedProduct?.rupStatus ?? "unknown",
       catalogVersion: selectedProduct?.catalogVersion,
 
@@ -85,6 +111,22 @@ export function RecordCreatePage() {
       windSpeed: weatherWind,
       windDirection: weatherWindDir,
 
+      // Matrix #46/#47/#48: weather provenance — when the operator entered any
+      // weather value manually, stamp source+timestamp+location so the audit
+      // trail records *how* the reading was captured, not just the values.
+      weatherCaptureSource: hasWeather ? "manual" : undefined,
+      weatherCaptureTimestamp: hasWeather ? new Date().toISOString() : undefined,
+      weatherCaptureLocation:
+        hasWeather && selectedFarm && selectedField
+          ? `${selectedFarm.name} — ${selectedField.name}`
+          : undefined,
+
+      // Matrix #49/#50: GPS coordinates captured on demand via
+      // navigator.geolocation. Coordinates are only set when the operator
+      // explicitly clicked "Use my location" on Step 4.
+      gpsLatitude: gpsCoords?.lat,
+      gpsLongitude: gpsCoords?.lng,
+
       // Matrix #19/#20 + #21/#22. Requester comes from operator input; site
       // description is derived from the selected farm/field when an explicit
       // address isn't captured, satisfying the "address OR brief description"
@@ -96,14 +138,29 @@ export function RecordCreatePage() {
           ? `${selectedFarm.name} — ${selectedField.name}`
           : undefined,
 
-      // Matrix #1: infer applicator category from the seeded applicator's
-      // certification status for the v0.1 demo (a real UI exposes this as a
-      // picker in a later phase). Matrix #33: empty string means "operator
-      // confirmed no SLN registration applies".
-      applicatorCategory: applicator?.certificationNumber
-        ? "certified_commercial"
-        : "noncertified",
-      slnNumber: "",
+      // Matrix #1: applicator category is explicitly chosen by the operator on
+      // Step 1 — no longer inferred from certificationNumber. Matrix #33:
+      // empty string means "operator confirmed no SLN registration applies";
+      // undefined means "not yet answered".
+      applicatorCategory,
+      slnNumber: noSln ? "" : undefined,
+
+      // Matrix #51-#58: label-review acks. A single master checkbox on the
+      // Review step flips all 8 to true and stamps a demo productLabelRef +
+      // labelVersionOrDate so the engine's LABEL_VERIFICATION_REQUIRED rules
+      // can clear when the operator has actually consulted the label.
+      productLabelRef: labelReviewed
+        ? `https://example.epa.gov/labels/${epaReg}`
+        : undefined,
+      labelVersionOrDate: labelReviewed ? `Demo: ${todayYmd}` : undefined,
+      labelConsistencyReviewed: labelReviewed || undefined,
+      labelCropSiteReviewed: labelReviewed || undefined,
+      labelTargetPestReviewed: labelReviewed || undefined,
+      labelRateReviewed: labelReviewed || undefined,
+      labelTimingMethodReviewed: labelReviewed || undefined,
+      labelPpeReviewed: labelReviewed || undefined,
+      labelReiPhiReviewed: labelReviewed || undefined,
+      labelDriftBufferReviewed: labelReviewed || undefined,
 
       attestationConfirmed: attested,
     };
@@ -136,10 +193,44 @@ export function RecordCreatePage() {
     system: { createdAt: nowIso, createdOffline: false, lastUpdatedAt: nowIso },
     complianceReviewRequired: false,
   };
-  const failingChecks = runAllComplianceChecks(previewRecord).filter(
-    (o) => o.status === "fail"
+  const allOutcomes = runAllComplianceChecks(previewRecord);
+  const failingChecks = allOutcomes.filter((o) => o.status === "fail");
+  // Matrix label-verification + NEEDS_REVIEW items surface as `unknown` and
+  // must not be silently swallowed by the "Passed" banner — the operator has
+  // to either tick the label-review master toggle or acknowledge the review
+  // item explicitly before the gate flips green.
+  const reviewRequiredChecks = allOutcomes.filter(
+    (o) =>
+      o.status === "unknown" &&
+      (o.resultCode === "LABEL_VERIFICATION_REQUIRED" ||
+        o.resultCode === "NEEDS_REVIEW")
   );
-  const compliancePassed = missingRequired.length === 0 && failingChecks.length === 0;
+  const compliancePassed =
+    missingRequired.length === 0 &&
+    failingChecks.length === 0 &&
+    reviewRequiredChecks.length === 0;
+
+  const handleCaptureLocation = () => {
+    setGpsError(null);
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGpsError("Geolocation is not available on this device.");
+      return;
+    }
+    setGpsCapturing(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsCoords({
+          lat: String(pos.coords.latitude),
+          lng: String(pos.coords.longitude),
+        });
+        setGpsCapturing(false);
+      },
+      (err) => {
+        setGpsError(err.message || "Unable to capture location.");
+        setGpsCapturing(false);
+      }
+    );
+  };
 
   const handleSaveDraft = async () => {
     setSaveError(null);
@@ -166,6 +257,13 @@ export function RecordCreatePage() {
     if (step < 4) setStep(step + 1);
     else handleSaveDraft();
   };
+
+  // Step 3 gate: End Time is required before advancing.
+  const nextDisabled = (() => {
+    if (step === 2 && !timeEnd) return true;
+    if (step === 4) return !attested || !canSaveDraft || saving;
+    return false;
+  })();
 
   return (
     <>
@@ -215,7 +313,7 @@ export function RecordCreatePage() {
       onBack={() => setStep(step - 1)}
       onNext={handleNext}
       nextLabel={step === 4 ? "Save Draft" : "Next"}
-      nextDisabled={step === 4 ? !attested || !canSaveDraft || saving : false}
+      nextDisabled={nextDisabled}
     >
       {/* Step 1: Farm & Field */}
       {step === 0 && (
@@ -231,6 +329,21 @@ export function RecordCreatePage() {
               <option value="">Select a field...</option>
               {fields.filter((f) => !farmId || f.farmId === farmId).map((f) => (
                 <option key={f.id} value={f.id}>{f.name} {f.defaultAcres ? `(${f.defaultAcres} ac)` : ""}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Applicator Category" required>
+            <select
+              value={applicatorCategory}
+              onChange={(e) =>
+                setApplicatorCategory(e.target.value as ApplicatorCategory)
+              }
+              style={selectStyle}
+            >
+              {APPLICATOR_CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
           </FormField>
@@ -259,6 +372,17 @@ export function RecordCreatePage() {
               </div>
             </div>
           )}
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={noSln}
+              onChange={(e) => setNoSln(e.target.checked)}
+              style={{ width: 18, height: 18, accentColor: "var(--color-primary)", marginTop: 2 }}
+            />
+            <div style={{ fontSize: 13, color: "var(--color-text)" }}>
+              No Special Local Need (SLN) registration applies.
+            </div>
+          </label>
         </div>
       )}
 
@@ -272,7 +396,7 @@ export function RecordCreatePage() {
             <FormField label="Time Start">
               <input type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} style={inputStyle} />
             </FormField>
-            <FormField label="Time End">
+            <FormField label="Time End" required>
               <input type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} style={inputStyle} />
             </FormField>
           </div>
@@ -352,6 +476,46 @@ export function RecordCreatePage() {
               ⚠️ Wind speed exceeds 10 mph — check EPA label restrictions for this product.
             </div>
           )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              type="button"
+              onClick={handleCaptureLocation}
+              disabled={gpsCapturing}
+              data-testid="gps-capture-button"
+              style={{
+                alignSelf: "flex-start",
+                height: 36,
+                padding: "0 14px",
+                backgroundColor: gpsCapturing
+                  ? "#c8c8c8"
+                  : "var(--color-primary)",
+                color: gpsCapturing ? "#646464" : "#ffffff",
+                border: "none",
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: gpsCapturing ? "not-allowed" : "pointer",
+              }}
+            >
+              {gpsCapturing ? "Capturing…" : "📍 Use my location"}
+            </button>
+            {gpsCoords && (
+              <div
+                data-testid="gps-coords-display"
+                style={{ fontSize: 12, color: "var(--color-text-secondary)" }}
+              >
+                Lat {gpsCoords.lat}, Lng {gpsCoords.lng}
+              </div>
+            )}
+            {gpsError && (
+              <div
+                data-testid="gps-error"
+                style={{ fontSize: 12, color: "var(--color-error)" }}
+              >
+                {gpsError}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -372,47 +536,65 @@ export function RecordCreatePage() {
             <DetailRow label="Wind" value={weatherWind ? `${weatherWind} mph ${weatherWindDir}` : "—"} />
           </div>
 
-          {/* Compliance status — computed from entered data, never hardcoded. */}
-          {compliancePassed ? (
-            <div style={{
+          {/* Label-review master toggle — flips all 8 Matrix #51-#58 acks plus
+              the productLabelRef/labelVersionOrDate evidence pointers so the
+              LABEL_VERIFICATION_REQUIRED bucket can clear. */}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 12,
+              cursor: "pointer",
               padding: 12,
               borderRadius: 6,
-              backgroundColor: "var(--color-primary-light)",
-              border: "1px solid var(--color-primary)",
-            }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-primary)" }}>
-                ✓ Compliance Check Passed
+              border: "1px solid var(--color-border)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={labelReviewed}
+              onChange={(e) => setLabelReviewed(e.target.checked)}
+              data-testid="label-reviewed-toggle"
+              style={{ width: 20, height: 20, accentColor: "var(--color-primary)", marginTop: 2 }}
+            />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>
+                I have reviewed the product label
               </div>
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
-                All required data points present; no compliance issues detected.
+                Confirms label sections (crop/site, target pest, rate, timing &amp; method, PPE, REI/PHI, drift &amp; buffer) match this application.
               </div>
             </div>
-          ) : (
-            <div
-              role="alert"
-              style={{
-                padding: 12,
-                borderRadius: 6,
-                backgroundColor: "rgba(239,68,68,0.1)",
-                border: "1px solid rgba(239,68,68,0.3)",
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#991b1b" }}>
-                ✗ Compliance Check Failed — {missingRequired.length + failingChecks.length} issue
-                {missingRequired.length + failingChecks.length === 1 ? "" : "s"}
-              </div>
-              <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "#991b1b" }}>
-                {missingRequired.map((label) => (
-                  <li key={`missing-${label}`}>Missing required field: {label}</li>
-                ))}
-                {failingChecks.map((c) => (
-                  <li key={c.ruleId}>
-                    {c.message} [{c.citationShort}]
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          </label>
+
+          {/* Compliance panel — grouped by matrix result code, computed from
+              entered data. Surfaces form-level "you haven't filled this in yet"
+              nudges alongside the engine's failing rules and review-required
+              label items, each with its source citation. */}
+          <div
+            data-testid="compliance-status-banner"
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: compliancePassed ? "var(--color-primary, #166534)" : "#991b1b",
+            }}
+          >
+            {(() => {
+              if (compliancePassed) return "✓ Compliance Check Passed";
+              if (failingChecks.length === 0 && missingRequired.length === 0) {
+                const n = reviewRequiredChecks.length;
+                return `${n} item${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} review`;
+              }
+              const issues = missingRequired.length + failingChecks.length;
+              return `✗ Compliance Check Failed — ${issues} issue${issues === 1 ? "" : "s"}`;
+            })()}
+          </div>
+          <ComplianceChecklistPanel
+            outcomes={allOutcomes}
+            missingFormFields={missingRequired.map(
+              (label) => `Missing required field: ${label}`
+            )}
+          />
 
           {/* Attestation */}
           <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", padding: 12, borderRadius: 6, border: "1px solid var(--color-border)" }}>

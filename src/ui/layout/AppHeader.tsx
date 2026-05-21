@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useSession } from "../session/SessionContext";
+import { SyncControls } from "../system/SyncControls";
 import { MobileMenu } from "./MobileMenu";
 
 export function AppHeader() {
@@ -95,6 +96,7 @@ export function AppHeader() {
 
         {/* Right side: user info */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <SyncControls />
           <span
             style={{
               fontSize: 11,
