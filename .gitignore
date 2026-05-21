@@ -183,6 +183,7 @@ temp/
 
 # Large data files (commit via Git LFS or keep local-only)
 data/raw/epa/apprildatadump_public.xlsx
+data/raw/epa/2024-cdr-public-csv-data/
 
 # EPA CDR (TSCA Chemical Data Reporting) markdown/CSV conversions — 270 MB of
 # bulk industrial-chemical data; wrong granularity for the pesticide product
