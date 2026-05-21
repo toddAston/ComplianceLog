@@ -1,143 +1,147 @@
 # FieldLog
 
-**Mobile-first, offline pesticide application recordkeeping for agricultural operations. Captures audit-ready records with applicator details, field info, products, weather, and manager review—fully Missouri and federally compliant.**
+Offline-first pesticide application recordkeeping for agricultural operations.
+Captures the evidence a Missouri commercial applicator is legally required to keep —
+nothing more, nothing less.
+
+This is a working v0.1 application, not a demo. The compliance engine is wired to
+real Missouri and federal regulatory citations. The issue log ([ISSUES.md](./ISSUES.md))
+lists 72 known gaps openly — read it before depending on any output this app produces.
 
 ---
 
-## Overview
+## What it actually does today
 
-FieldLog is an offline-capable mobile application designed to help agricultural operations capture and manage pesticide application records with full audit trails. It enables contractors and applicators to log spray applications in the field in real-time, with managers able to review and attest to records for regulatory compliance.
+- Contractor drafts an application record and submits it (offline-capable via IndexedDB)
+- Record is frozen at submission with a product snapshot
+- Manager reviews, accepts or flags for correction, then locks
+- Locked record can be exported as a PDF audit packet
+- Compliance checklist runs against every record at submit time, citing the specific
+  Missouri regulation paragraph that applies to each check
+- Role switching (contractor / manager) is a client-side toggle — demo-grade only,
+  not authorization
 
-### Core Problem Solved
+## What is not ready for production
 
-Pesticide application records are often scattered across texts, spreadsheets, paper notes, photos, weather apps, and memory. FieldLog centralizes this evidence in a single, audit-ready format that satisfies state and federal recordkeeping requirements.
-
-### System Framing
-
-```
-FieldLog = Application Record spine + offline capture + manager review + immutable evidence/export
-```
-
----
-
-## Features
-
-- **Offline-First Mobile App** — Contractors record applications in the field without requiring internet connectivity
-- **Golden Happy Path** — Simple, linear workflow: select farm → select field → select product → enter details → attest → submit → manager review → locked record
-- **Complete Application Records** — Capture all mandatory fields per Missouri regulation (applicator, field, product, application details, weather, conditions)
-- **Manager Review Workflow** — Managers review submitted records for accuracy and compliance before locking
-- **Audit-Ready Exports** — Generate compliance-ready reports with full metadata and evidence chains
-- **System Audit Logging** — Automatic capture of system-level metadata for regulatory inspection
-- **Weather Integration** — Capture or record environmental conditions (temperature, wind speed/direction)
+- The server (`server/`) is a skeleton. It is not deployed and the client does not talk
+  to it. All data lives in the browser's IndexedDB.
+- Auth is `localStorage` + React context. There is no real login.
+- 26 high-severity and 2 critical issues are open — see [ISSUES.md](./ISSUES.md).
 
 ---
 
-## Application Record Structure
+## Running the client app
 
-Every application record contains:
-
-```
-Application Record
-├── Applicator (name, company, certification #)
-├── Field / Site (farm, field, crop/site, acres treated)
-├── Product (name, EPA registration #, rate, amount)
-├── Application Details (date, time, pest target, weather)
-├── Attestation (contractor signature/confirmation)
-├── Manager Review (approval status, comments)
-├── System Audit Metadata (timestamps, user log, changes)
-└── Evidence Attachments (planned for future release)
+```sh
+npm install
+npm run dev
 ```
 
----
+Opens at `http://localhost:5173` (or next available port). Works entirely offline —
+no server required.
 
-## Regulatory Compliance
+| Command | What it does |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server with HMR |
+| `npm run build` | Type-check + production build to `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run typecheck` | TypeScript type-check only, no emit |
+| `npm run lint` | ESLint (run by path — `eslint .` crashes on `reference/vendor-docs/`, see DA-011 in ISSUES.md) |
 
-FieldLog captures records compliant with:
+## Running the client tests
 
-- **Missouri Rev. Stat. §281.035** — Certified commercial applicator recordkeeping
-- **Missouri Rev. Stat. §281.037** — Certified noncommercial applicator recordkeeping (RUP)
-- **Missouri Rev. Stat. §281.045** — Public operator recordkeeping (RUP)
-- **2 CSR 70-25.120** — Application record content and timing requirements
-- **40 CFR 171.304(f)(6)(vi)** — Federal certification plan requirements
+```sh
+npm test              # watch mode
+npx vitest run        # single run, all tests
+npx vitest run src/application/applicationRecordService.test.ts  # single file
+npx vitest -t "submit"  # tests matching a name pattern
+```
 
-### Record Requirements
-
-Records must include (A–M per Missouri regulation):
-- Certified applicator name/license
-- Noncertified applicator or technician name
-- Application date and time (start/end)
-- Requesting party name/address
-- Application site address/description
-- Area treated (acres)
-- Crop/site/commodity
-- Target pest(s)
-- Pesticide trade name(s)
-- EPA registration # and special-use #
-- Mixture rate and total amount applied
-- Air temperature, wind speed and direction (outdoor use)
-
-### Timing & Retention
-
-- **Completion:** Records must be completed within **3 business days** of application
-- **Retention:** Records must be kept for **at least 3 years**
-- **Inspection:** Records available for regulatory inspection on request
+63 test files covering the golden path, compliance rules, sync layer, Dexie schema
+migration, and UI components. Zero skipped tests.
 
 ---
 
-## Project Status
+## Running the server (skeleton)
 
-**Current Version:** v0.1 (Design & Specification)
+The server requires Node 22, Postgres 16, and Redis 7. The easiest path is Docker Compose.
+Docker has not been verified on the current dev machine (see DA-001 in ISSUES.md).
 
-**MVP Scope:**  
-Narrow, fully working application capturing all mandatory record fields without over-claiming compliance.
+```sh
+cd server
+cp .env.example .env
+# Edit .env — change every CHANGE_ME_* value before running
+docker compose up --build
+```
 
-**Architecture:**
-- **Frontend:** Mobile-first (iOS/Android ready), offline-capable
-- **Backend:** (To be determined based on MVP decisions)
-- **Data Model:** Reproducible, database-agnostic format
-- **Workflow:** Contractor capture → Manager review → Export
+API available at `http://localhost:8080`. Health check: `GET /healthz`.
 
----
+**Without Docker:**
 
-## Getting Started
+```sh
+cd server
+npm install
+# Provide DATABASE_URL and REDIS_URL in the environment, then:
+npm run dev           # tsx watch — restarts on file changes
+npx vitest run        # 31 server tests (no Postgres required — tests use a fake db)
+npm run typecheck
+npm run db:generate   # regenerate Drizzle migrations after schema changes
+npm run db:migrate    # apply migrations to the target database
+```
 
-*(Development environment and build instructions to be added as the project progresses)*
+### Implemented server routes
 
----
+Only two real handlers exist today. Everything else returns `501 Not Implemented`.
 
-## Project Documents
-
-- [FieldLog Reproducible Design Snapshot](fieldlog_reproducible_design_v0_1.md) — Complete design specification and data model
-- [FieldLog Development Blueprint](FieldLog%20Development%20Blueprint.md) — Regulatory analysis, feature design, and architecture
-- [Mermaid Diagrams](fieldlog_mermaid_diagrams_v0_1.mmd) — Visual flowcharts and system diagrams
-- [Design Model](fieldlog_design_model_v0_1.json) — JSON schema for the application record
-
----
-
-## Data Sources
-
-This project includes publicly available regulatory data:
-- **2024 CDR Data Files** — Chemical Data Reporting for pesticide manufacture, import, and industrial use information from the EPA
-
----
-
-## Contributing
-
-*(Contribution guidelines to be established)*
+- `POST /v1/application-records` — create a draft record
+- `POST /v1/application-records/:recordId/submit` — submit and generate a product snapshot
 
 ---
 
-## License
+## Project structure
 
-*(License to be determined)*
+```
+src/
+  application/      # service layer — all business logic, compliance engine, sync
+  db/               # Dexie schema, seed data, migration tests
+  domain/           # Zod schemas (source of truth for all types)
+  ui/               # React components, pages, context
+server/
+  src/              # Fastify + Drizzle + BullMQ skeleton
+  migrations/       # Hand-written SQL migrations (0001, 0002)
+docs/
+  architecture/     # API spec, OpenAPI, design notes
+  build/            # Compliance check catalogue and regulatory citations
+  product/          # Canonical design model JSON
+research/
+  regulatory/       # Missouri 2 CSR 70-25 PDF, APPRIL guides
+```
 
 ---
 
-## Contact & Support
+## Regulatory scope
 
-For questions, regulatory compliance concerns, or feature requests, please [contact the project team].
+Records are structured to satisfy:
+
+- Missouri 2 CSR 70-25.120 — application record content (fields A–M)
+- RSMo 281.035 / 281.037 / 281.045 — certified, noncertified, and public operator requirements
+- FIFRA §12(a)(2)(G) — label compliance attestation
+
+FieldLog is an evidence capture tool. It does not adjudicate compliance or substitute
+for legal review. The compliance checklist flags issues; it does not decide them.
 
 ---
 
-**Last Updated:** May 19, 2026  
-**Project Phase:** Specification & Design (v0.1)
+## Known issues
+
+See [ISSUES.md](./ISSUES.md) for the full list. The two criticals as of 2026-05-21:
+
+- **CE-001** — No compliance rule enforces a certified applicator license number on
+  every applicable record (matrix #9, P0 under 2 CSR 70-25.120(4)(A))
+- **CM-001** — `applicatorSchema` has 8 fields (including `licenseCategoryCodes`,
+  which is the foundation for the supervisor-certified-in-category rule) that have
+  no corresponding column in the server's Drizzle schema
+
+---
+
+**Last updated:** 2026-05-21 — v0.1, client functional, server skeleton only
