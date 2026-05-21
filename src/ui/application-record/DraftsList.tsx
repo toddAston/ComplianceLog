@@ -280,9 +280,16 @@ export function DraftsList({ limit }: DraftsListProps = {}) {
                 data-testid={`draft-row-${r.id}`}
               >
                 <CardContent>
+                  {/* useFlexGap on every wrapping row: MUI's default
+                      margin-based `spacing` collapses to 0 when items wrap to
+                      a new line — so chip rows + the manager TextField/Button
+                      pairs rendered with zero vertical whitespace on narrow
+                      widths. `useFlexGap` switches to CSS gap so spacing
+                      applies in both axes. */}
                   <Stack
                     direction="row"
                     spacing={1}
+                    useFlexGap
                     sx={{ mb: 1, alignItems: "center", flexWrap: "wrap" }}
                   >
                     <Typography
@@ -356,6 +363,7 @@ export function DraftsList({ limit }: DraftsListProps = {}) {
                     <Stack
                       direction="row"
                       spacing={1.5}
+                      useFlexGap
                       sx={{ alignItems: "center", flexWrap: "wrap" }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -392,7 +400,12 @@ export function DraftsList({ limit }: DraftsListProps = {}) {
                   {isLocked && (
                     <Stack spacing={1} onClick={(e) => e.stopPropagation()}>
                       {state.kind !== "exported" && (
-                        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          useFlexGap
+                          sx={{ flexWrap: "wrap" }}
+                        >
                           <Button
                             size="small"
                             onClick={(e) => {
@@ -483,6 +496,7 @@ export function DraftsList({ limit }: DraftsListProps = {}) {
                       <Stack
                         direction="row"
                         spacing={1}
+                        useFlexGap
                         sx={{ alignItems: "center", flexWrap: "wrap" }}
                       >
                         <TextField
@@ -514,6 +528,7 @@ export function DraftsList({ limit }: DraftsListProps = {}) {
                       <Stack
                         direction="row"
                         spacing={1}
+                        useFlexGap
                         sx={{ alignItems: "center", flexWrap: "wrap" }}
                       >
                         <TextField
