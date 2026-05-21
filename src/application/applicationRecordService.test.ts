@@ -44,15 +44,27 @@ const buildContractorInputs = (
 
   applicationDate: "2026-05-19",
   startTime: "08:00",
+  endTime: "11:30",
   applicationMethod: "Ground broadcast",
   rateApplied: "1 qt/ac",
   totalAmountApplied: "10 gal",
+  targetPest: "Waterhemp",
 
   temperature: "72F",
   windSpeed: "5 mph",
   windDirection: "S",
 
   attestationConfirmed: true,
+
+  // Backfill P0 compliance-matrix fields so the "fully compliant" baseline
+  // record continues to satisfy the new required-field rules.
+  requesterName: "Acme Producer Co.",
+  requesterAddress: "1234 Main St, Columbia, MO 65201",
+  siteDescription: "North 40, soybean field along Highway B",
+
+  applicatorCategory: "certified_commercial",
+  slnNumber: "",
+
   ...overrides,
 });
 
@@ -247,6 +259,57 @@ describe("acceptAndLockApplicationRecord", () => {
 
     expect(eventTypes).toContain("reviewed");
     expect(eventTypes).toContain("locked");
+  });
+
+  it("blocks approval of a record with unresolved warnings when no review note is given (matrix #78)", async () => {
+    // A long-past application date trips RECORD_LATE (a warning) without any
+    // blocking required-field failures.
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs({ applicationDate: "2026-01-05" }),
+      },
+      TEST_APPLICATOR
+    );
+    await submitApplicationRecord(draft.id, TEST_APPLICATOR);
+
+    await expect(
+      acceptAndLockApplicationRecord(draft.id, TEST_MANAGER)
+    ).rejects.toThrow(/unresolved warnings/i);
+  });
+
+  it("allows approval of a record with warnings when a review note documents the override (matrix #78)", async () => {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs({ applicationDate: "2026-01-05" }),
+      },
+      TEST_APPLICATOR
+    );
+    await submitApplicationRecord(draft.id, TEST_APPLICATOR);
+
+    const locked = await acceptAndLockApplicationRecord(
+      draft.id,
+      TEST_MANAGER,
+      "Late entry: field notes were transcribed after the fact."
+    );
+
+    expect(locked.workflowStatus).toBe("locked");
+    expect(locked.managerInputs.reviewNotes).toMatch(/late entry/i);
+  });
+
+  it("does not require a review note when the record has no warnings", async () => {
+    const draft = await createDraftApplicationRecord(
+      {
+        organizationId: DEMO_ORG_ID,
+        contractorInputs: buildContractorInputs(),
+      },
+      TEST_APPLICATOR
+    );
+    await submitApplicationRecord(draft.id, TEST_APPLICATOR);
+
+    const locked = await acceptAndLockApplicationRecord(draft.id, TEST_MANAGER);
+    expect(locked.workflowStatus).toBe("locked");
   });
 });
 
@@ -490,7 +553,9 @@ describe("submitApplicationRecord — compliance integration", () => {
       description: string;
     }>;
     expect(outcomes).toBeDefined();
-    expect(outcomes.length).toBe(4);
+    // Total rule count grows with each phased compliance addition; assert lower
+    // bound rather than exact match so the test survives matrix expansion.
+    expect(outcomes.length).toBeGreaterThanOrEqual(25);
     expect(outcomes.every((o) => typeof o.status === "string")).toBe(true);
     expect(outcomes.some((o) => o.status === "fail")).toBe(true);
     expect(outcomes.some((o) => o.status === "pass")).toBe(true);

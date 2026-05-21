@@ -236,6 +236,37 @@ export async function acceptAndLockApplicationRecord(
     throw new Error("Cannot lock a record without a product snapshot.");
   }
 
+  // Required-field and explicit-rule checks must clear before a manager can lock
+  // the record as evidence. Warnings (e.g. weather, late completion) are advisory
+  // and do not block approval.
+  const blockingFailures = runAllComplianceChecks(record).filter(
+    (o) =>
+      o.status === "fail" && (o.severity === "error" || o.severity === "blocked")
+  );
+  if (blockingFailures.length > 0) {
+    const citations = [
+      ...new Set(blockingFailures.map((f) => f.citationShort)),
+    ].join(", ");
+    throw new Error(
+      `Cannot approve: required record fields are missing or fail an explicit rule (${citations}). ${blockingFailures[0].message}`
+    );
+  }
+
+  // Matrix #78: approving a record that still has advisory warnings is an
+  // override decision and must be documented. Require a review note in that case
+  // so the audit trail records why the manager accepted the record as-is.
+  const advisoryWarnings = runAllComplianceChecks(record).filter(
+    (o) => o.status === "fail" && o.severity === "warning"
+  );
+  if (advisoryWarnings.length > 0 && !reviewNotes?.trim()) {
+    const citations = [
+      ...new Set(advisoryWarnings.map((w) => w.citationShort)),
+    ].join(", ");
+    throw new Error(
+      `Cannot approve with unresolved warnings (${citations}) without a review note explaining the override.`
+    );
+  }
+
   const reviewedAt = now();
   const lockedAt = reviewedAt;
 

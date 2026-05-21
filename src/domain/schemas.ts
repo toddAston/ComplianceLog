@@ -2,6 +2,55 @@ import { z } from "zod";
 
 export const rupStatusSchema = z.enum(["yes", "no", "unknown"]);
 
+// Matrix #25: unit accompanying the size of area treated. Acres covers the
+// existing v0.1 form; the rest are for indoor/structural and linear scenarios.
+export const areaUnitSchema = z.enum([
+  "acres",
+  "square_feet",
+  "linear_feet",
+  "cubic_feet",
+  "other",
+]);
+
+// Matrix #1: applicator category — drives duty checks (#2, #3) and conditional
+// applicability for noncertified/technician/trainee name+license fields.
+export const applicatorCategorySchema = z.enum([
+  "certified_commercial",
+  "certified_noncommercial",
+  "public_operator",
+  "private",
+  "noncertified",
+  "noncertified_rup",
+  "technician",
+  "trainee",
+  "unknown",
+]);
+
+// Matrix #65-#67: a single product in a tank mix. All sub-fields are optional
+// because mid-drafted entries are common; the rules detect incompleteness on
+// each filled entry and emit MISSING_REQUIRED_FIELD when a required sub-field
+// is absent.
+export const tankMixProductSchema = z.object({
+  productName: z.string().optional(),
+  epaRegistrationNumber: z.string().optional(),
+  applicationRate: z.string().optional(),
+  totalAmount: z.string().optional(),
+});
+
+// Matrix #40: rate unit. "other" lets free-form units survive validation while
+// still recording the structured choice when known.
+export const rateUnitSchema = z.enum([
+  "oz_per_acre",
+  "lb_per_acre",
+  "gal_per_acre",
+  "qt_per_acre",
+  "pt_per_acre",
+  "fl_oz_per_1000_sqft",
+  "lb_per_1000_sqft",
+  "gal_per_1000_sqft",
+  "other",
+]);
+
 export const workflowStatusSchema = z.enum([
   "draft",
   "submitted",
@@ -91,6 +140,10 @@ export const productSchema = z.object({
   epaRegistrationNumber: z.string(),
   rupStatus: rupStatusSchema,
   createdAt: z.string(),
+  // Optional metadata sourced from the EPA RUP report; surfaced in the picker
+  // and audit context. Stays optional so existing seeds/tests remain valid.
+  activeIngredient: z.string().optional(),
+  manufacturer: z.string().optional(),
 });
 
 export const productSnapshotSchema = z.object({
@@ -155,6 +208,105 @@ export const contractorInputsSchema = z.object({
   attestationConfirmed: z.boolean(),
   submittedBy: z.string().optional(),
   submittedAt: z.string().optional(),
+
+  // P0 compliance-matrix fields. All optional so existing records and offline
+  // drafts remain schema-valid; the compliance engine emits
+  // MISSING_REQUIRED_FIELD when these are absent and required by their rule.
+
+  // Matrix #1: site classification gate (drives outdoor weather requirements).
+  // Free string for now to match defensive reads in helpers.isOutdoorApplication.
+  siteType: z.string().optional(),
+
+  // Matrix #19/#20: person requesting the pesticide use.
+  requesterName: z.string().optional(),
+  requesterAddress: z.string().optional(),
+
+  // Matrix #21/#22: application site address OR brief description (rule passes
+  // if either is present).
+  siteAddress: z.string().optional(),
+  siteDescription: z.string().optional(),
+
+  // Matrix #24/#25: structured area treated + unit. Existing `acresTreated`
+  // (above) remains for back-compat; new records should populate the structured
+  // pair when known.
+  areaTreatedValue: z.string().optional(),
+  areaUnit: areaUnitSchema.optional(),
+
+  // Matrix #37-#40: structured rate / mixture fields. Existing `rateApplied` and
+  // `totalAmountApplied` remain for back-compat.
+  mixtureRate: z.string().optional(),
+  totalMixtureAmount: z.string().optional(),
+  applicationRateValue: z.string().optional(),
+  rateUnit: rateUnitSchema.optional(),
+
+  // Matrix #34: documented evidence linking a use to its EPA registration when
+  // the EPA number itself is not recorded directly per use.
+  epaRegistrationCorrelationEvidenceId: z.string().optional(),
+
+  // Matrix #52-#55: agricultural-producer request to apply at less than the
+  // labeled concentration. The flag drives applicability of the other three.
+  lessThanLabelConcentration: z.boolean().optional(),
+  producerRequestText: z.string().optional(),
+  producerRequestSignature: z.string().optional(),
+  producerRequestDate: z.string().optional(),
+
+  // Matrix #1: applicator category.
+  applicatorCategory: applicatorCategorySchema.optional(),
+
+  // Matrix #10-#15: secondary actor information. Each is conditional on the
+  // primary `applicatorCategory` or on participation flags below.
+  noncertifiedApplicatorName: z.string().optional(),
+  noncertifiedApplicatorLicense: z.string().optional(),
+  technicianName: z.string().optional(),
+  technicianLicense: z.string().optional(),
+  traineeName: z.string().optional(),
+
+  // Matrix #26: indoor spot or crack-and-crevice exemption — gates the
+  // requirement for a structured area-size (#24).
+  indoorSpotCrackCrevice: z.boolean().optional(),
+
+  // Matrix #33: Special Local Need (SLN) registration number.
+  slnNumber: z.string().optional(),
+
+  // Matrix #41-#43: pre-mixed / ready-to-use product fields.
+  isPremixed: z.boolean().optional(),
+  premixedAmountUsed: z.string().optional(),
+  premixedActualRate: z.string().optional(),
+
+  // Matrix #45: structural / termite-within-10ft exception — gates the
+  // outdoor weather requirements.
+  structuralTermiteWithin10ft: z.boolean().optional(),
+
+  // Matrix #49-#51 + #72: manual weather + GPS evidence quality.
+  weatherCaptureSource: z.string().optional(),
+  weatherCaptureTimestamp: z.string().optional(),
+  weatherCaptureLocation: z.string().optional(),
+  gpsLatitude: z.string().optional(),
+  gpsLongitude: z.string().optional(),
+
+  // Matrix #35-#36 + #56-#64: label reference + reviewer acknowledgments. Each
+  // boolean is the human's "I have reviewed this label-driven question" mark;
+  // when false/undefined the rule remains `unknown` per LABEL_VERIFICATION_REQUIRED
+  // (matrix says never auto-pass).
+  productLabelRef: z.string().optional(),
+  labelVersionOrDate: z.string().optional(),
+  labelConsistencyReviewed: z.boolean().optional(),
+  labelCropSiteReviewed: z.boolean().optional(),
+  labelTargetPestReviewed: z.boolean().optional(),
+  labelRateReviewed: z.boolean().optional(),
+  labelTimingMethodReviewed: z.boolean().optional(),
+  labelPpeReviewed: z.boolean().optional(),
+  labelReiPhiReviewed: z.boolean().optional(),
+  labelDriftBufferReviewed: z.boolean().optional(),
+
+  // Matrix #65-#67: tank mix products. When non-empty, per-entry rules apply.
+  tankMixProducts: z.array(tankMixProductSchema).optional(),
+
+  // Matrix #68-#71: noncertified-applicator supervision evidence.
+  supervisorIdentified: z.boolean().optional(),
+  workOrderAcknowledged: z.boolean().optional(),
+  labelInPossessionAcknowledged: z.boolean().optional(),
+  equipmentReadinessAcknowledged: z.boolean().optional(),
 });
 
 export const managerInputsSchema = z.object({

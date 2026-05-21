@@ -32,10 +32,20 @@ Derive these from the existing Zod (extend, don't fork) in a new `src/domain/ser
   Persist `etag` in Dexie so the client can send `If-Match` / `baseEtag` on the next mutation.
 - **`applicatorInviteResult`** → replace the local `inviteToken`/`inviteLink` with the
   server's `inviteLink` (drop local token generation in `contractorService.ts`).
-- **No change** to `contractorInputs`, `managerInputs`, `system`, enums — the server imports
-  these verbatim, so the wire shape already matches what the client produces. The string
+- **`contractorInputs` schema parity.** The earlier "no change" claim is no longer true.
+  `contractorInputs` now carries ~47 optional compliance-matrix fields (matrix #1-72)
+  defined in `src/domain/schemas.ts:170-306`. The server imports the Zod verbatim, has
+  matching flat columns on `application_records` via migration
+  `0002_compliance_matrix_fields.sql`, and round-trips every field through
+  `server/src/routes/records.ts` (`insertRow` + `rowToApplicationRecord`). The string
   fields (`acresTreated`, `applicationDate`, `startTime`) stay strings on the wire; the
-  server does the numeric/date/time coercion.
+  server does the numeric/date/time coercion. Empty-string vs absent is preserved on
+  every new text column (`nullableTextToDb` / `nullableTextFromDb`) because the SLN
+  rule and any future rule may distinguish them. Any future client-side growth to
+  `contractorInputs` must land the same four-layer change in one PR: client Zod →
+  this `openapi.yaml` (`ContractorInputs` + `ContractorInputsPatch`) → Drizzle schema
+  + numbered migration → `records.ts` mappers + `mapping.ts` helpers.
+- **No change** to `managerInputs`, `system`, enums — the server imports these verbatim.
 
 Add a Dexie schema bump (per CLAUDE.md "Dexie Schema Upgrades") to store `etag` and a
 per-record `syncError` field; additive, so a `db.version(2)` with the new optional fields

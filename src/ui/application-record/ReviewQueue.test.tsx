@@ -48,6 +48,7 @@ const buildContractorInputs = (
 
   applicationDate: "2026-05-19",
   startTime: "08:00",
+  endTime: "11:30",
   applicationMethod: "Ground broadcast",
   rateApplied: "1 qt/ac",
   totalAmountApplied: "10 gal",
@@ -58,6 +59,14 @@ const buildContractorInputs = (
   windDirection: "S",
 
   attestationConfirmed: true,
+
+  requesterName: "Acme Producer Co.",
+  requesterAddress: "1234 Main St, Columbia, MO 65201",
+  siteDescription: "North 40, soybean field along Highway B",
+
+  applicatorCategory: "certified_commercial",
+  slnNumber: "",
+
   ...overrides,
 });
 

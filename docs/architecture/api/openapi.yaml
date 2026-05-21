@@ -1118,6 +1118,45 @@ components:
         observedAt: { type: string, format: date-time }
         capturedAt: { type: string, format: date-time }
 
+    # Compliance matrix #1-72 supporting types. Values mirror the client Zod
+    # at src/domain/schemas.ts:7-52 — keep in sync.
+    AreaUnit:
+      type: string
+      enum: [acres, square_feet, linear_feet, cubic_feet, other]
+    RateUnit:
+      type: string
+      enum:
+        - oz_per_acre
+        - lb_per_acre
+        - gal_per_acre
+        - qt_per_acre
+        - pt_per_acre
+        - fl_oz_per_1000_sqft
+        - lb_per_1000_sqft
+        - gal_per_1000_sqft
+        - other
+    ApplicatorCategory:
+      type: string
+      enum:
+        - certified_commercial
+        - certified_noncommercial
+        - public_operator
+        - private
+        - noncertified
+        - noncertified_rup
+        - technician
+        - trainee
+        - unknown
+    TankMixProduct:
+      type: object
+      additionalProperties: false
+      description: A single product entry in a tank mix. All sub-fields optional — partial entries are normal mid-draft.
+      properties:
+        productName: { type: string }
+        epaRegistrationNumber: { type: string, pattern: "^[A-Za-z0-9-]+$" }
+        applicationRate: { type: string }
+        totalAmount: { type: string }
+
     ProductSnapshot:
       type: object
       additionalProperties: false
@@ -1189,6 +1228,60 @@ components:
         attestationConfirmed: { type: boolean }
         submittedBy: { type: string }
         submittedAt: { type: string, format: date-time }
+        # ---------- Compliance matrix #1-72 (all optional) ----------
+        # Server-side flat columns are added in migration 0002. The compliance
+        # engine (src/application/compliance/rules/*.ts) reads these.
+        siteType: { type: string, description: "Matrix #1: outdoor / indoor / greenhouse / structural / warehouse — gates outdoor weather rules." }
+        requesterName: { type: string, description: "Matrix #19." }
+        requesterAddress: { type: string, description: "Matrix #20." }
+        siteAddress: { type: string, description: "Matrix #21." }
+        siteDescription: { type: string, description: "Matrix #22 — passes if siteAddress OR siteDescription is set." }
+        areaTreatedValue: { type: string, description: "Matrix #24 — structured area-treated value (acresTreated remains for back-compat)." }
+        areaUnit: { $ref: "#/components/schemas/AreaUnit" }
+        mixtureRate: { type: string, description: "Matrix #37." }
+        totalMixtureAmount: { type: string, description: "Matrix #38." }
+        applicationRateValue: { type: string, description: "Matrix #39." }
+        rateUnit: { $ref: "#/components/schemas/RateUnit" }
+        epaRegistrationCorrelationEvidenceId: { type: string, description: "Matrix #34 — evidence linking use to EPA reg #." }
+        lessThanLabelConcentration: { type: boolean, description: "Matrix #52 — gates producerRequest* fields." }
+        producerRequestText: { type: string, description: "Matrix #53." }
+        producerRequestSignature: { type: string, description: "Matrix #54." }
+        producerRequestDate: { type: string, description: "Matrix #55. Opaque text — no format constraint on the wire today." }
+        applicatorCategory: { $ref: "#/components/schemas/ApplicatorCategory" }
+        noncertifiedApplicatorName: { type: string, description: "Matrix #10." }
+        noncertifiedApplicatorLicense: { type: string, description: "Matrix #11." }
+        technicianName: { type: string, description: "Matrix #12." }
+        technicianLicense: { type: string, description: "Matrix #13." }
+        traineeName: { type: string, description: "Matrix #15." }
+        indoorSpotCrackCrevice: { type: boolean, description: "Matrix #26 — exemption for indoor spot / crack-and-crevice." }
+        slnNumber: { type: string, description: "Matrix #33 — Special Local Need registration number. Empty-string distinct from absent (recorded N/A vs unrecorded)." }
+        isPremixed: { type: boolean, description: "Matrix #41." }
+        premixedAmountUsed: { type: string, description: "Matrix #42." }
+        premixedActualRate: { type: string, description: "Matrix #43." }
+        structuralTermiteWithin10ft: { type: boolean, description: "Matrix #45 — exempts outdoor weather rules when true." }
+        weatherCaptureSource: { type: string, description: "Matrix #49." }
+        weatherCaptureTimestamp: { type: string, description: "Matrix #50." }
+        weatherCaptureLocation: { type: string, description: "Matrix #51." }
+        gpsLatitude: { type: string, description: "Matrix #72." }
+        gpsLongitude: { type: string, description: "Matrix #72." }
+        productLabelRef: { type: string, description: "Matrix #35." }
+        labelVersionOrDate: { type: string, description: "Matrix #36." }
+        labelConsistencyReviewed: { type: boolean, description: "Matrix #56." }
+        labelCropSiteReviewed: { type: boolean, description: "Matrix #57." }
+        labelTargetPestReviewed: { type: boolean, description: "Matrix #58." }
+        labelRateReviewed: { type: boolean, description: "Matrix #59." }
+        labelTimingMethodReviewed: { type: boolean, description: "Matrix #60." }
+        labelPpeReviewed: { type: boolean, description: "Matrix #61." }
+        labelReiPhiReviewed: { type: boolean, description: "Matrix #62." }
+        labelDriftBufferReviewed: { type: boolean, description: "Matrix #63." }
+        tankMixProducts:
+          type: array
+          description: "Matrix #65-#67 — per-product rate/amount in a tank mix."
+          items: { $ref: "#/components/schemas/TankMixProduct" }
+        supervisorIdentified: { type: boolean, description: "Matrix #68." }
+        workOrderAcknowledged: { type: boolean, description: "Matrix #69." }
+        labelInPossessionAcknowledged: { type: boolean, description: "Matrix #70." }
+        equipmentReadinessAcknowledged: { type: boolean, description: "Matrix #71." }
     ContractorInputsPatch:
       type: object
       additionalProperties: false
@@ -1217,6 +1310,57 @@ components:
         windDirection: { type: string }
         weatherNotes: { type: string }
         attestationConfirmed: { type: boolean }
+        # ---------- Compliance matrix #1-72 (all optional) ----------
+        siteType: { type: string }
+        requesterName: { type: string }
+        requesterAddress: { type: string }
+        siteAddress: { type: string }
+        siteDescription: { type: string }
+        areaTreatedValue: { type: string }
+        areaUnit: { $ref: "#/components/schemas/AreaUnit" }
+        mixtureRate: { type: string }
+        totalMixtureAmount: { type: string }
+        applicationRateValue: { type: string }
+        rateUnit: { $ref: "#/components/schemas/RateUnit" }
+        epaRegistrationCorrelationEvidenceId: { type: string }
+        lessThanLabelConcentration: { type: boolean }
+        producerRequestText: { type: string }
+        producerRequestSignature: { type: string }
+        producerRequestDate: { type: string }
+        applicatorCategory: { $ref: "#/components/schemas/ApplicatorCategory" }
+        noncertifiedApplicatorName: { type: string }
+        noncertifiedApplicatorLicense: { type: string }
+        technicianName: { type: string }
+        technicianLicense: { type: string }
+        traineeName: { type: string }
+        indoorSpotCrackCrevice: { type: boolean }
+        slnNumber: { type: string }
+        isPremixed: { type: boolean }
+        premixedAmountUsed: { type: string }
+        premixedActualRate: { type: string }
+        structuralTermiteWithin10ft: { type: boolean }
+        weatherCaptureSource: { type: string }
+        weatherCaptureTimestamp: { type: string }
+        weatherCaptureLocation: { type: string }
+        gpsLatitude: { type: string }
+        gpsLongitude: { type: string }
+        productLabelRef: { type: string }
+        labelVersionOrDate: { type: string }
+        labelConsistencyReviewed: { type: boolean }
+        labelCropSiteReviewed: { type: boolean }
+        labelTargetPestReviewed: { type: boolean }
+        labelRateReviewed: { type: boolean }
+        labelTimingMethodReviewed: { type: boolean }
+        labelPpeReviewed: { type: boolean }
+        labelReiPhiReviewed: { type: boolean }
+        labelDriftBufferReviewed: { type: boolean }
+        tankMixProducts:
+          type: array
+          items: { $ref: "#/components/schemas/TankMixProduct" }
+        supervisorIdentified: { type: boolean }
+        workOrderAcknowledged: { type: boolean }
+        labelInPossessionAcknowledged: { type: boolean }
+        equipmentReadinessAcknowledged: { type: boolean }
 
     ManagerInputs:
       type: object

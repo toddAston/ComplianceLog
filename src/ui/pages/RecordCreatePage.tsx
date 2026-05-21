@@ -8,9 +8,10 @@ import {
   useAllProducts,
 } from "../../db/queries";
 import { createDraftApplicationRecord } from "../../application/applicationRecordService";
+import { runAllComplianceChecks } from "../../application/complianceRules";
 import { useSession } from "../session/SessionContext";
 import { DEMO_ORG_ID } from "../../db/seed";
-import type { ContractorInputs } from "../../domain/types";
+import type { ApplicationRecord, ContractorInputs } from "../../domain/types";
 
 const STEP_LABELS = ["Farm & Field", "Product", "Application Details", "Weather", "Review & Attest"];
 
@@ -37,6 +38,8 @@ export function RecordCreatePage() {
   const [weatherTemp, setWeatherTemp] = useState("");
   const [weatherWind, setWeatherWind] = useState("");
   const [weatherWindDir, setWeatherWindDir] = useState("");
+  const [requesterName, setRequesterName] = useState("");
+  const [requesterAddress, setRequesterAddress] = useState("");
   const [attested, setAttested] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -47,31 +50,28 @@ export function RecordCreatePage() {
 
   const canSaveDraft = Boolean(farmId && fieldId && productId);
 
-  const handleSaveDraft = async () => {
-    setSaveError(null);
-    if (!canSaveDraft || !selectedFarm || !selectedField || !selectedProduct) {
-      setSaveError("Select a farm, field, and product before saving.");
-      return;
-    }
+  // Single source for the record's contractor inputs, tolerant of unselected
+  // farm/field/product so the Review step can preview compliance live.
+  const buildContractorInputs = (): ContractorInputs => {
     const applicator = applicators[0];
-    const contractorInputs: ContractorInputs = {
+    return {
       applicatorId: applicator?.id ?? actor.userId,
       applicatorName: applicator?.applicatorName ?? actor.displayName,
       company: applicator?.contractorCompanyName ?? "",
       certificationNumber: applicator?.certificationNumber,
 
-      farmId: selectedFarm.id,
-      farmName: selectedFarm.name,
-      fieldId: selectedField.id,
-      fieldName: selectedField.name,
-      cropOrSite: selectedField.defaultCropOrSite ?? "",
-      acresTreated: acresTreated || String(selectedField.defaultAcres ?? ""),
+      farmId: selectedFarm?.id ?? "",
+      farmName: selectedFarm?.name ?? "",
+      fieldId: selectedField?.id ?? "",
+      fieldName: selectedField?.name ?? "",
+      cropOrSite: selectedField?.defaultCropOrSite ?? "",
+      acresTreated: acresTreated || String(selectedField?.defaultAcres ?? ""),
 
-      productId: selectedProduct.id,
-      productName: selectedProduct.name,
-      epaRegistrationNumber: selectedProduct.epaRegistrationNumber,
-      rupStatus: selectedProduct.rupStatus,
-      catalogVersion: selectedProduct.catalogVersion,
+      productId: selectedProduct?.id,
+      productName: selectedProduct?.name ?? "",
+      epaRegistrationNumber: selectedProduct?.epaRegistrationNumber ?? "",
+      rupStatus: selectedProduct?.rupStatus ?? "unknown",
+      catalogVersion: selectedProduct?.catalogVersion,
 
       applicationDate: dateApplied,
       startTime: timeStart,
@@ -85,8 +85,69 @@ export function RecordCreatePage() {
       windSpeed: weatherWind,
       windDirection: weatherWindDir,
 
+      // Matrix #19/#20 + #21/#22. Requester comes from operator input; site
+      // description is derived from the selected farm/field when an explicit
+      // address isn't captured, satisfying the "address OR brief description"
+      // requirement of 2 CSR 70-25.120(E).
+      requesterName: requesterName || undefined,
+      requesterAddress: requesterAddress || undefined,
+      siteDescription:
+        selectedFarm && selectedField
+          ? `${selectedFarm.name} — ${selectedField.name}`
+          : undefined,
+
+      // Matrix #1: infer applicator category from the seeded applicator's
+      // certification status for the v0.1 demo (a real UI exposes this as a
+      // picker in a later phase). Matrix #33: empty string means "operator
+      // confirmed no SLN registration applies".
+      applicatorCategory: applicator?.certificationNumber
+        ? "certified_commercial"
+        : "noncertified",
+      slnNumber: "",
+
       attestationConfirmed: attested,
     };
+  };
+
+  // Live compliance preview for the Review step — derived from entered data,
+  // never hardcoded. Mirrors the read-side gate in RecordDetailDialog.
+  const reviewInputs = buildContractorInputs();
+  const requiredForReview: { label: string; filled: boolean }[] = [
+    { label: "Farm", filled: Boolean(reviewInputs.farmId) },
+    { label: "Field", filled: Boolean(reviewInputs.fieldId) },
+    { label: "Product", filled: Boolean(reviewInputs.productId) },
+    { label: "Date Applied", filled: Boolean(reviewInputs.applicationDate) },
+    { label: "Target Pest", filled: Boolean(reviewInputs.targetPest?.trim()) },
+    { label: "Rate per Acre", filled: Boolean(reviewInputs.rateApplied.trim()) },
+    { label: "Total Amount", filled: Boolean(reviewInputs.totalAmountApplied.trim()) },
+    { label: "Acres Treated", filled: Boolean(reviewInputs.acresTreated.trim()) },
+    { label: "Requester Name", filled: Boolean(reviewInputs.requesterName?.trim()) },
+    { label: "Requester Address", filled: Boolean(reviewInputs.requesterAddress?.trim()) },
+  ];
+  const missingRequired = requiredForReview.filter((f) => !f.filled).map((f) => f.label);
+  const nowIso = new Date().toISOString();
+  const previewRecord: ApplicationRecord = {
+    id: "preview",
+    organizationId: DEMO_ORG_ID,
+    workflowStatus: "draft",
+    syncStatus: "local_only",
+    contractorInputs: reviewInputs,
+    managerInputs: { reviewStatus: "not_reviewed" },
+    system: { createdAt: nowIso, createdOffline: false, lastUpdatedAt: nowIso },
+    complianceReviewRequired: false,
+  };
+  const failingChecks = runAllComplianceChecks(previewRecord).filter(
+    (o) => o.status === "fail"
+  );
+  const compliancePassed = missingRequired.length === 0 && failingChecks.length === 0;
+
+  const handleSaveDraft = async () => {
+    setSaveError(null);
+    if (!canSaveDraft || !selectedFarm || !selectedField || !selectedProduct) {
+      setSaveError("Select a farm, field, and product before saving.");
+      return;
+    }
+    const contractorInputs = buildContractorInputs();
     setSaving(true);
     try {
       await createDraftApplicationRecord(
@@ -229,6 +290,24 @@ export function RecordCreatePage() {
           <FormField label="Acres Treated" required>
             <input type="number" value={acresTreated} onChange={(e) => setAcresTreated(e.target.value)} placeholder="e.g., 40" style={inputStyle} />
           </FormField>
+          <FormField label="Requester Name" required>
+            <input
+              type="text"
+              value={requesterName}
+              onChange={(e) => setRequesterName(e.target.value)}
+              placeholder="Person/company requesting the application"
+              style={inputStyle}
+            />
+          </FormField>
+          <FormField label="Requester Address" required>
+            <input
+              type="text"
+              value={requesterAddress}
+              onChange={(e) => setRequesterAddress(e.target.value)}
+              placeholder="Street, City, State"
+              style={inputStyle}
+            />
+          </FormField>
         </div>
       )}
 
@@ -293,20 +372,47 @@ export function RecordCreatePage() {
             <DetailRow label="Wind" value={weatherWind ? `${weatherWind} mph ${weatherWindDir}` : "—"} />
           </div>
 
-          {/* Compliance status */}
-          <div style={{
-            padding: 12,
-            borderRadius: 6,
-            backgroundColor: "var(--color-primary-light)",
-            border: "1px solid var(--color-primary)",
-          }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-primary)" }}>
-              ✓ Compliance Check Passed
+          {/* Compliance status — computed from entered data, never hardcoded. */}
+          {compliancePassed ? (
+            <div style={{
+              padding: 12,
+              borderRadius: 6,
+              backgroundColor: "var(--color-primary-light)",
+              border: "1px solid var(--color-primary)",
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-primary)" }}>
+                ✓ Compliance Check Passed
+              </div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
+                All required data points present; no compliance issues detected.
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
-              All 13 Missouri mandatory data points present.
+          ) : (
+            <div
+              role="alert"
+              style={{
+                padding: 12,
+                borderRadius: 6,
+                backgroundColor: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(239,68,68,0.3)",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#991b1b" }}>
+                ✗ Compliance Check Failed — {missingRequired.length + failingChecks.length} issue
+                {missingRequired.length + failingChecks.length === 1 ? "" : "s"}
+              </div>
+              <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "#991b1b" }}>
+                {missingRequired.map((label) => (
+                  <li key={`missing-${label}`}>Missing required field: {label}</li>
+                ))}
+                {failingChecks.map((c) => (
+                  <li key={c.ruleId}>
+                    {c.message} [{c.citationShort}]
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
+          )}
 
           {/* Attestation */}
           <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", padding: 12, borderRadius: 6, border: "1px solid var(--color-border)" }}>

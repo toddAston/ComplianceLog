@@ -6,7 +6,10 @@ import {
   submitApplicationRecord,
   type ActorContext,
 } from "./applicationRecordService";
-import { exportLockedApplicationRecord } from "./applicationRecordExport";
+import {
+  AUDIT_EXPORT_DISCLAIMER,
+  exportLockedApplicationRecord,
+} from "./applicationRecordExport";
 import { DEMO_ORG_ID, seedDemoData } from "../db/seed";
 import type { ContractorInputs } from "../domain/types";
 
@@ -43,15 +46,27 @@ const buildContractorInputs = (
 
   applicationDate: "2026-05-19",
   startTime: "08:00",
+  endTime: "11:30",
   applicationMethod: "Ground broadcast",
   rateApplied: "1 qt/ac",
   totalAmountApplied: "10 gal",
+  targetPest: "Waterhemp",
 
   temperature: "72F",
   windSpeed: "5 mph",
   windDirection: "S",
 
   attestationConfirmed: true,
+
+  // Backfill P0 compliance-matrix fields so the "fully compliant" baseline
+  // record continues to satisfy the new required-field rules.
+  requesterName: "Acme Producer Co.",
+  requesterAddress: "1234 Main St, Columbia, MO 65201",
+  siteDescription: "North 40, soybean field along Highway B",
+
+  applicatorCategory: "certified_commercial",
+  slnNumber: "",
+
   ...overrides,
 });
 
@@ -210,5 +225,40 @@ describe("exportLockedApplicationRecord", () => {
 
     expect(dto.managerReview.reviewedBy).toBe(TEST_MANAGER.displayName);
     expect(dto.managerReview.reviewNotes).toBeUndefined();
+  });
+
+  it("derives retainUntil as application date plus three years (matrix #6)", async () => {
+    const locked = await seedLockedRecord("Looks good.");
+    const dto = await exportLockedApplicationRecord(locked.id);
+    expect(dto.retainUntil).toBe("2029-05-19");
+  });
+
+  it("embeds a source-linked compliance checklist (matrix #81)", async () => {
+    const locked = await seedLockedRecord("Looks good.");
+    const dto = await exportLockedApplicationRecord(locked.id);
+
+    expect(dto.complianceChecklist.length).toBeGreaterThan(0);
+    for (const item of dto.complianceChecklist) {
+      expect(item.citationShort.length).toBeGreaterThan(0);
+      expect(item.ruleId.length).toBeGreaterThan(0);
+      expect(["pass", "fail", "unknown"]).toContain(item.status);
+    }
+    // The seeded record is fully populated → no failures.
+    expect(dto.complianceChecklist.every((c) => c.status !== "fail")).toBe(true);
+  });
+
+  it("includes the recordkeeping-vs-regulatory-review disclaimer (matrix #82)", async () => {
+    const locked = await seedLockedRecord("Looks good.");
+    const dto = await exportLockedApplicationRecord(locked.id);
+    expect(dto.disclaimer).toBe(AUDIT_EXPORT_DISCLAIMER);
+    expect(dto.disclaimer).toMatch(/qualified human review/i);
+  });
+
+  it("blocks export when the event timeline is empty (matrix #79/#81)", async () => {
+    const locked = await seedLockedRecord("Looks good.");
+    await db.recordEvents.where("applicationRecordId").equals(locked.id).delete();
+    await expect(
+      exportLockedApplicationRecord(locked.id)
+    ).rejects.toThrow(/event timeline/i);
   });
 });

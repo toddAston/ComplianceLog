@@ -652,3 +652,81 @@ describe("DraftApplicationRecordForm Product Autocomplete", () => {
     });
   });
 });
+
+describe("RecordCreatePage compliance gate", () => {
+  beforeEach(() => {
+    window.history.pushState({}, "", "/records/new");
+  });
+
+  it("does NOT report compliance passed when the Review step is reached with no data", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    // Walk straight to the Review step without entering anything.
+    for (let i = 0; i < 4; i++) {
+      await user.click(await screen.findByRole("button", { name: /Next/i }));
+    }
+
+    expect(await screen.findByText(/Compliance Check Failed/i)).toBeTruthy();
+    expect(screen.queryByText(/Compliance Check Passed/i)).toBeNull();
+    expect(screen.getByText(/Missing required field: Product/i)).toBeTruthy();
+    expect(screen.getByText(/Missing required field: Target Pest/i)).toBeTruthy();
+  });
+
+  it("reports compliance passed only after all required data and weather are entered", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    // Step 1 — Farm & Field
+    const farmSelect = (await screen.findByLabelText(/Farm/i)) as HTMLSelectElement;
+    await waitFor(() =>
+      expect(Array.from(farmSelect.options).some((o) => o.value === "farm-north")).toBe(true)
+    );
+    await user.selectOptions(farmSelect, "farm-north");
+    const fieldSelect = screen.getByLabelText(/Field/i) as HTMLSelectElement;
+    await waitFor(() =>
+      expect(Array.from(fieldSelect.options).some((o) => o.value === "field-7")).toBe(true)
+    );
+    await user.selectOptions(fieldSelect, "field-7");
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+
+    // Step 2 — Product (seeded as RUP "yes"; applicator carries a cert so RUP passes)
+    const productSelect = (await screen.findByLabelText(/Product/i)) as HTMLSelectElement;
+    await waitFor(() =>
+      expect(
+        Array.from(productSelect.options).some(
+          (o) => o.value === "product-example-herbicide-4l"
+        )
+      ).toBe(true)
+    );
+    await user.selectOptions(productSelect, "product-example-herbicide-4l");
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+
+    // Step 3 — Application Details (date defaults to today)
+    await user.type(screen.getByLabelText(/Time Start/i), "08:30");
+    await user.type(screen.getByLabelText(/Time End/i), "11:30");
+    await user.type(screen.getByLabelText(/Target Pest/i), "Broadleaf weeds");
+    await user.type(screen.getByLabelText(/Rate per Acre/i), "22");
+    await user.type(screen.getByLabelText(/Total Amount/i), "880");
+    await user.type(screen.getByLabelText(/Acres Treated/i), "40");
+    await user.type(
+      screen.getByLabelText(/Requester Name/i),
+      "Acme Producer Co."
+    );
+    await user.type(
+      screen.getByLabelText(/Requester Address/i),
+      "1234 Main St, Columbia, MO 65201"
+    );
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+
+    // Step 4 — Weather (clears the outdoor air-temperature + wind rules)
+    await user.type(screen.getByLabelText(/Temperature/i), "72");
+    await user.type(screen.getByLabelText(/Wind Speed/i), "5");
+    await user.selectOptions(screen.getByLabelText(/Wind Direction/i), "NW");
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+
+    // Step 5 — Review
+    expect(await screen.findByText(/Compliance Check Passed/i)).toBeTruthy();
+    expect(screen.queryByText(/Compliance Check Failed/i)).toBeNull();
+  });
+});

@@ -9,7 +9,7 @@ FieldLog (repo: ComplianceLog) — mobile-first, offline-capable pesticide appli
 Offline-first immutable pesticide application evidence capture system.
 
 # Project Status
-v0.1 — Vite + React + TypeScript app scaffolded and running with Dexie/IndexedDB persistence, MUI UI, Zod schemas, and a vitest suite covering the golden path (draft → submit → product snapshot → manager review → lock → export) plus compliance checks, sync status, and audit timeline. **There is no backend yet** — all persistence is local to the browser and all role gating is client-side (see "Trust Boundary" below). The design docs (below) remain the source of truth for product intent; when they disagree with the code, flag the divergence rather than silently aligning the docs.
+v0.1 — Vite + React + TypeScript app scaffolded and running with Dexie/IndexedDB persistence, MUI UI, Zod schemas, and a vitest suite covering the golden path (draft → submit → product snapshot → manager review → lock → export) plus compliance checks, sync status, and audit timeline. A **Fastify + Drizzle + Postgres + Redis + BullMQ server skeleton** lives at `server/` (committed at `301af2a`) but is **not deployed and not yet talking to the client** — see "Backend State" and "Known Contract Mismatches" below. All client persistence today is still local to the browser, and all role gating is client-side (see "Trust Boundary" below). The design docs (below) remain the source of truth for product intent; when they disagree with the code, flag the divergence rather than silently aligning the docs.
 
 # Source-of-Truth Documents
 Read these before designing or implementing — they define the domain and are more complete than the code:
@@ -57,7 +57,7 @@ Golden path:
 draft → submit → product snapshot → manager review → lock → export
 
 # Trust Boundary: When a Backend Lands
-Today FieldLog runs entirely in the browser. There is no server, no real auth, no API endpoints, and no SQL. That means the following are **demo-grade only** and MUST be re-enforced server-side before any production deployment:
+Today the client runs entirely in the browser and does not talk to the server skeleton at `server/`. There is no real auth, no client→server requests in flight, and no SQL going through any production query path. That means the following are **demo-grade only** and MUST be re-enforced server-side once the client starts hitting the real API — and they MUST be implemented in the server before any production deployment:
 
 - **Role gating** (`useSessionRole`, `SessionProvider`, `DEMO_APPLICATOR_ACTOR` / `DEMO_MANAGER_ACTOR`) is a client-side toggle and is trivially bypassable. Treat it as UI scaffolding, not as authorization.
 - **Zod schemas in `src/domain/schemas.ts`** validate user input on the client only. When a backend exists, the same schemas (or their server-side equivalents) MUST be re-applied at the API boundary — never trust a payload because the UI is "supposed to" have validated it.
@@ -67,6 +67,26 @@ Today FieldLog runs entirely in the browser. There is no server, no real auth, n
 - **Rate limiting, password hashing (bcrypt/argon2), authorization checks on every endpoint, and parameterized queries** are all "N/A today, mandatory the moment a backend exists."
 
 When adding any feature that *would* hit a backend in production, write it so the server boundary is obvious in the code (a dedicated service function, a typed request/response shape) — don't smear the contract across UI components.
+
+# Backend State (as of 2026-05-20)
+A Fastify + Drizzle + Postgres + Redis + BullMQ server skeleton lives at `server/` (committed at `301af2a`). It is **not deployed** and the client does not yet talk to it. Its purpose is to give the client sync layer (in progress, partly uncommitted — see `HANDOFF.md`) a real contract to target. `cd server && npx vitest run` passes (31 tests); `docker compose up` is written but Docker hasn't been verified on this machine.
+
+What exists today:
+- **Drizzle schema** (`server/src/db/schema.ts`) — PG enums derived from client Zod (`workflow_status`, `sync_status`, `rup_status`, `review_status`, `record_event_type`, `user_role`) so the two cannot drift on enum values. Tables: orgs, users, farms, fields, applicators, products, application_records, product_snapshots, reviews, append-only record_events. Append-only and locked-immutability triggers in `migrations/0001_*.sql`.
+- **Two routes** in `server/src/routes/records.ts`: `POST /v1/application-records` (create) and `POST /v1/application-records/:recordId/submit` (submit). The submit handler re-runs `runAllComplianceChecks` server-side (imported from the client app via `complianceRules.ts`, which re-exports `src/application/compliance/*`).
+- Auth stub (`server/src/plugins/auth.ts`), error envelope, lifecycle assertion helpers, type-coercion mapping in `server/src/lib/mapping.ts`.
+
+What does NOT exist yet (relative to `docs/architecture/api/client_migration_notes.md`): review, resubmit, sync/batch, export job, exports/{jobId}, applicators, farms, fields, auth/login, auth/refresh, all GET list endpoints.
+
+# Known Contract Mismatches
+The client's `src/domain/schemas.ts` has been actively expanded (matrix #1-72 compliance fields) while the server's Drizzle schema, openapi spec, and route mappers are still at the **v0.1 shape committed at `213ff4c`**. The compliance matrix expansion is uncommitted in the working tree — when it lands, every layer below needs to bump in lockstep or matrix data will silently disappear at the network boundary.
+
+1. **Silent matrix-field drop on submit/read (severity: critical).** The server's `createBodySchema` parses the full client `contractorInputsSchema` (so requests don't reject — `.optional()` fields pass through), but `server/src/routes/records.ts` `insertRow` mapping writes only v0.1 columns. The 30+ new client fields (`requesterName`, `requesterAddress`, `siteAddress`, `siteDescription`, `areaTreatedValue`, `areaUnit`, `applicatorCategory`, `noncertifiedApplicatorName` + license/technician/trainee fields, `slnNumber`, `lessThanLabelConcentration` + producer-request fields, `mixtureRate`/`totalMixtureAmount`/`applicationRateValue`/`rateUnit`, `isPremixed`/`premixedAmountUsed`/`premixedActualRate`, `structuralTermiteWithin10ft`, `indoorSpotCrackCrevice`, `weatherCaptureSource`/`Timestamp`/`Location`, `gpsLatitude`/`gpsLongitude`, `productLabelRef`/`labelVersionOrDate`, all 8 `label*Reviewed` acks, `tankMixProducts` array, supervisorIdentified + workOrder/labelInPossession/equipmentReadiness acks, `epaRegistrationCorrelationEvidenceId`, `siteType`) are **silently dropped**. `rowToApplicationRecord` likewise reads back without them. Server-side compliance evaluation diverges from client-side because the row passed to `runAllComplianceChecks` is missing the new fields, so the server's gate could pass a record the client failed (or vice versa).
+2. **OpenAPI spec lags client schema.** `docs/architecture/api/openapi.yaml` contains zero matrix-field names — it documents the v0.1 wire shape only. Same v0.1-shape footprint as the Drizzle schema.
+3. **Route-prefix drift.** Routes are declared at `/v1/application-records` (with `/v1/` literally in each route string), but `docs/architecture/api/openapi.yaml` paths and `docs/architecture/api/client_migration_notes.md` use unprefixed paths. Either add a global `/v1` plugin and drop per-route prefixes, or update the spec/docs to match.
+4. **Missing endpoint surface (expected for a skeleton, but a real gap).** See the "What does NOT exist yet" list above; until those land, the client sync layer can only exercise create+submit.
+
+When working on the sync layer or any feature that crosses the network boundary, treat the four layers — **client Zod (`src/domain/schemas.ts`), openapi spec (`docs/architecture/api/openapi.yaml`), server Drizzle (`server/src/db/schema.ts`), and server route mappers (`server/src/routes/*.ts`)** — as a single contract that must move together.
 
 # Dexie Schema Upgrades
 IndexedDB schema migrations are forward-only by Dexie's design — there is no rollback once a user's browser has run `db.version(N).stores(...)`. The current schema is `v1` in `src/db/fieldlogDb.ts`. Rules:

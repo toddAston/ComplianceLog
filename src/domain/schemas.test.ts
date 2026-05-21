@@ -30,6 +30,10 @@ const baseContractor = {
   windDirection: "S",
 
   attestationConfirmed: true,
+
+  requesterName: "Acme Producer Co.",
+  requesterAddress: "1234 Main St, Columbia, MO 65201",
+  siteDescription: "North 40, soybean field along Highway B",
 };
 
 describe("weatherSnapshotSchema", () => {

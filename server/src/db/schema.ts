@@ -19,6 +19,9 @@ import {
 // the two cannot drift (handoff constraint #11 / migration §5.3). If a Zod enum
 // gains a member, regenerating the migration is the only way to add it to PG.
 import {
+  applicatorCategorySchema,
+  areaUnitSchema,
+  rateUnitSchema,
   recordEventTypeSchema,
   reviewStatusSchema,
   rupStatusSchema,
@@ -27,7 +30,10 @@ import {
   workflowStatusSchema,
 } from "../../../src/domain/schemas";
 import type {
+  ApplicatorCategory,
+  AreaUnit,
   RUPStatus,
+  RateUnit,
   RecordEventType,
   ReviewStatus,
   SyncStatus,
@@ -61,6 +67,18 @@ export const recordEventType = pgEnum(
 export const userRole = pgEnum(
   "user_role",
   userRoleSchema.options as [UserRole, ...UserRole[]]
+);
+export const areaUnit = pgEnum(
+  "area_unit",
+  areaUnitSchema.options as [AreaUnit, ...AreaUnit[]]
+);
+export const rateUnit = pgEnum(
+  "rate_unit",
+  rateUnitSchema.options as [RateUnit, ...RateUnit[]]
+);
+export const applicatorCategory = pgEnum(
+  "applicator_category",
+  applicatorCategorySchema.options as [ApplicatorCategory, ...ApplicatorCategory[]]
 );
 
 const auditColumns = {
@@ -246,6 +264,66 @@ export const applicationRecords = pgTable(
     attestationConfirmed: boolean("attestation_confirmed").notNull(),
     submittedBy: text("submitted_by"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
+
+    // --- contractorInputs (compliance matrix #1-72) ---
+    // All nullable: every field is .optional() on the client Zod
+    // (src/domain/schemas.ts:208-306). Mapping at server/src/routes/records.ts
+    // preserves PG's '' vs NULL distinction via nullableTextToDb/FromDb because
+    // the SLN rule (src/application/compliance/rules/conditionalApplicability.ts)
+    // treats them differently.
+    siteType: text("site_type"),
+    requesterName: text("requester_name"),
+    requesterAddress: text("requester_address"),
+    siteAddress: text("site_address"),
+    siteDescription: text("site_description"),
+    areaTreatedValue: text("area_treated_value"),
+    areaUnit: areaUnit("area_unit"),
+    mixtureRate: text("mixture_rate"),
+    totalMixtureAmount: text("total_mixture_amount"),
+    applicationRateValue: text("application_rate_value"),
+    rateUnit: rateUnit("rate_unit"),
+    epaRegistrationCorrelationEvidenceId: text(
+      "epa_registration_correlation_evidence_id"
+    ),
+    lessThanLabelConcentration: boolean("less_than_label_concentration"),
+    producerRequestText: text("producer_request_text"),
+    producerRequestSignature: text("producer_request_signature"),
+    // Opaque text, not date: client Zod is z.string().optional() with no format
+    // constraint. Tighten only when the rule tightens.
+    producerRequestDate: text("producer_request_date"),
+    applicatorCategory: applicatorCategory("applicator_category"),
+    noncertifiedApplicatorName: text("noncertified_applicator_name"),
+    noncertifiedApplicatorLicense: text("noncertified_applicator_license"),
+    technicianName: text("technician_name"),
+    technicianLicense: text("technician_license"),
+    traineeName: text("trainee_name"),
+    indoorSpotCrackCrevice: boolean("indoor_spot_crack_crevice"),
+    slnNumber: text("sln_number"),
+    isPremixed: boolean("is_premixed"),
+    premixedAmountUsed: text("premixed_amount_used"),
+    premixedActualRate: text("premixed_actual_rate"),
+    structuralTermiteWithin10ft: boolean("structural_termite_within_10ft"),
+    weatherCaptureSource: text("weather_capture_source"),
+    weatherCaptureTimestamp: text("weather_capture_timestamp"),
+    weatherCaptureLocation: text("weather_capture_location"),
+    gpsLatitude: text("gps_latitude"),
+    gpsLongitude: text("gps_longitude"),
+    productLabelRef: text("product_label_ref"),
+    labelVersionOrDate: text("label_version_or_date"),
+    labelConsistencyReviewed: boolean("label_consistency_reviewed"),
+    labelCropSiteReviewed: boolean("label_crop_site_reviewed"),
+    labelTargetPestReviewed: boolean("label_target_pest_reviewed"),
+    labelRateReviewed: boolean("label_rate_reviewed"),
+    labelTimingMethodReviewed: boolean("label_timing_method_reviewed"),
+    labelPpeReviewed: boolean("label_ppe_reviewed"),
+    labelReiPhiReviewed: boolean("label_rei_phi_reviewed"),
+    labelDriftBufferReviewed: boolean("label_drift_buffer_reviewed"),
+    // Variable-length structured bag — matches the weather_snapshot precedent.
+    tankMixProducts: jsonb("tank_mix_products"),
+    supervisorIdentified: boolean("supervisor_identified"),
+    workOrderAcknowledged: boolean("work_order_acknowledged"),
+    labelInPossessionAcknowledged: boolean("label_in_possession_acknowledged"),
+    equipmentReadinessAcknowledged: boolean("equipment_readiness_acknowledged"),
 
     // --- managerInputs (flattened) ---
     reviewStatus: reviewStatus("review_status").notNull().default("not_reviewed"),

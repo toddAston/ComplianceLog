@@ -64,6 +64,18 @@ export function optionalTimeToDb(
   return timeToDb(trimmed, field);
 }
 
+// PG text distinguishes '' from NULL; the compliance engine relies on this
+// distinction (e.g. SLN rule at src/application/compliance/rules/
+// conditionalApplicability.ts — undefined fails, "" passes). Apply to every
+// new optional text column where empty-string-vs-absent might carry meaning.
+export function nullableTextToDb(value: string | undefined): string | null {
+  return value === undefined ? null : value;
+}
+
+export function nullableTextFromDb(value: string | null): string | undefined {
+  return value === null ? undefined : value;
+}
+
 function validation(details: FieldIssue[]): AppError {
   return new AppError("VALIDATION_FAILED", "Request failed validation.", details);
 }

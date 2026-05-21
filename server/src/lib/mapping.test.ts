@@ -4,6 +4,8 @@ import {
   acresFromDb,
   acresToDb,
   dateToDb,
+  nullableTextFromDb,
+  nullableTextToDb,
   optionalTimeToDb,
   timeFromDb,
   timeToDb,
@@ -80,5 +82,35 @@ describe("time mapping", () => {
     expect(optionalTimeToDb(undefined, "f")).toBeNull();
     expect(optionalTimeToDb("", "f")).toBeNull();
     expect(optionalTimeToDb("17:45", "f")).toBe("17:45");
+  });
+});
+
+describe("nullableTextToDb", () => {
+  it("maps undefined to null (absent on the wire)", () => {
+    expect(nullableTextToDb(undefined)).toBeNull();
+  });
+
+  it("preserves empty string distinct from null", () => {
+    // Load-bearing: SLN rule treats undefined vs "" differently
+    // (src/application/compliance/rules/conditionalApplicability.ts).
+    expect(nullableTextToDb("")).toBe("");
+  });
+
+  it("passes through a normal string", () => {
+    expect(nullableTextToDb("SLN-001")).toBe("SLN-001");
+  });
+});
+
+describe("nullableTextFromDb", () => {
+  it("maps null to undefined (absent on the wire)", () => {
+    expect(nullableTextFromDb(null)).toBeUndefined();
+  });
+
+  it("preserves empty string distinct from undefined", () => {
+    expect(nullableTextFromDb("")).toBe("");
+  });
+
+  it("passes through a normal string", () => {
+    expect(nullableTextFromDb("X")).toBe("X");
   });
 });

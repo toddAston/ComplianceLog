@@ -3,7 +3,9 @@ import {
   applicationRecordEventSchema,
   applicationRecordSchema,
   applicationReviewSchema,
+  applicatorCategorySchema,
   applicatorSchema,
+  areaUnitSchema,
   catalogMetaSchema,
   contractorInputsSchema,
   farmSchema,
@@ -14,12 +16,14 @@ import {
   outboxStatusSchema,
   productSchema,
   productSnapshotSchema,
+  rateUnitSchema,
   recordEventTypeSchema,
   reviewStatusSchema,
   rupStatusSchema,
   syncOperationKindSchema,
   syncStatusSchema,
   systemCapturedFieldsSchema,
+  tankMixProductSchema,
   userRoleSchema,
   userSchema,
   weatherSnapshotSchema,
@@ -37,6 +41,10 @@ export type SyncStatus = z.infer<typeof syncStatusSchema>;
 export type UserRole = z.infer<typeof userRoleSchema>;
 export type ReviewStatus = z.infer<typeof reviewStatusSchema>;
 export type RecordEventType = z.infer<typeof recordEventTypeSchema>;
+export type AreaUnit = z.infer<typeof areaUnitSchema>;
+export type RateUnit = z.infer<typeof rateUnitSchema>;
+export type ApplicatorCategory = z.infer<typeof applicatorCategorySchema>;
+export type TankMixProduct = z.infer<typeof tankMixProductSchema>;
 
 export type Organization = z.infer<typeof organizationSchema>;
 export type User = z.infer<typeof userSchema>;

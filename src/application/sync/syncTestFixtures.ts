@@ -32,6 +32,14 @@ export function buildContractorInputs(
     windSpeed: "5 mph",
     windDirection: "S",
     attestationConfirmed: true,
+
+    requesterName: "Acme Producer Co.",
+    requesterAddress: "1234 Main St, Columbia, MO 65201",
+    siteDescription: "North 40, soybean field along Highway B",
+
+    applicatorCategory: "certified_commercial",
+    slnNumber: "",
+
     ...overrides,
   };
 }
