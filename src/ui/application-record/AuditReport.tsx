@@ -1,5 +1,8 @@
+import { useState } from "react";
 import type { ApplicationRecord, ApplicationRecordEvent } from "../../domain/types";
 import type { ComplianceCheckResult } from "../../application/complianceRules";
+import { CitationChip } from "../regulatory/CitationChip";
+import { RegulationDialog } from "../regulatory/RegulationDialog";
 import "./audit-report-print.css";
 
 type Props = {
@@ -15,6 +18,11 @@ export function AuditReport({ record, events, complianceResults }: Props) {
       complianceResults.map((r) => [r.citationShort, r.citation])
     ).entries(),
   ];
+  // Same dialog wiring as ComplianceChecklistPanel — the in-app preview of
+  // the audit report should be navigable too. The downloadable PDF audit
+  // packet stays as plain-text citations; interactive PDFs via jsPDF link
+  // annotations are a separate effort.
+  const [openCitation, setOpenCitation] = useState<string | null>(null);
 
   return (
     <div className="audit-report">
@@ -138,7 +146,12 @@ export function AuditReport({ record, events, complianceResults }: Props) {
                     {r.severity}
                   </td>
                   <td>{r.message}</td>
-                  <td>{r.citationShort}</td>
+                  <td>
+                    <CitationChip
+                      citationShort={r.citationShort}
+                      onOpen={setOpenCitation}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -180,12 +193,21 @@ export function AuditReport({ record, events, complianceResults }: Props) {
           <ul>
             {uniqueCitations.map(([short, full]) => (
               <li key={short}>
-                <strong>{short}</strong> — {full}
+                <CitationChip
+                  citationShort={short}
+                  onOpen={setOpenCitation}
+                />{" "}
+                — {full}
               </li>
             ))}
           </ul>
         </section>
       )}
+
+      <RegulationDialog
+        citationShort={openCitation}
+        onClose={() => setOpenCitation(null)}
+      />
 
       {/* Disclaimer */}
       <footer className="audit-report__disclaimer">

@@ -1,7 +1,10 @@
+import { useState } from "react";
 import type {
   ComplianceCheckOutcome,
   ComplianceResultCode,
 } from "../../application/complianceRules";
+import { CitationChip } from "../regulatory/CitationChip";
+import { RegulationDialog } from "../regulatory/RegulationDialog";
 
 // Display-side mapping for the matrix's result codes. Order matters — the panel
 // renders sections in this order, with the most severe at the top.
@@ -107,20 +110,9 @@ const Badge = ({ style, count }: { style: BucketStyle; count: number }) => (
   </span>
 );
 
-const Citation = ({ text }: { text: string }) => (
-  <code
-    style={{
-      fontSize: 11,
-      padding: "1px 6px",
-      borderRadius: 4,
-      backgroundColor: "rgba(0,0,0,0.06)",
-      color: "#374151",
-      whiteSpace: "nowrap",
-    }}
-  >
-    {text}
-  </code>
-);
+// Citation chips moved to ../regulatory/CitationChip. Kept the import + a
+// dialog wired into the panel body so a click on a CSR-backed chip opens the
+// in-app regulation PDF at the matching page.
 
 export type ComplianceChecklistPanelProps = {
   outcomes: ComplianceCheckOutcome[];
@@ -133,6 +125,10 @@ export function ComplianceChecklistPanel({
   missingFormFields = [],
   title = "Missouri compliance checks",
 }: ComplianceChecklistPanelProps) {
+  // Dialog state for the in-app regulation PDF viewer. The CitationChip
+  // children push the citationShort up via onOpen; the dialog renders the
+  // PDF jumped to the matching page.
+  const [openCitation, setOpenCitation] = useState<string | null>(null);
   const passCount = outcomes.filter((o) => o.status === "pass").length;
 
   const buckets: Record<ComplianceResultCode, ComplianceCheckOutcome[]> = {
@@ -273,7 +269,10 @@ export function ComplianceChecklistPanel({
                 >
                   <span>{o.message}</span>
                   <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <Citation text={o.citationShort} />
+                    <CitationChip
+                      citationShort={o.citationShort}
+                      onOpen={setOpenCitation}
+                    />
                     <code
                       style={{
                         fontSize: 10,
@@ -289,6 +288,11 @@ export function ComplianceChecklistPanel({
           </section>
         );
       })}
+
+      <RegulationDialog
+        citationShort={openCitation}
+        onClose={() => setOpenCitation(null)}
+      />
     </div>
   );
 }
