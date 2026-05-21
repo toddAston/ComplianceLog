@@ -37,11 +37,13 @@ export function DashboardPage() {
       {role === "contractor" && (
         <>
           {/* Stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16, marginBottom: 32 }}>
-            <StatCard label="Drafts" value={draftCount} color="var(--color-text-secondary)" />
-            <StatCard label="Submitted" value={submittedCount} color="var(--color-primary)" />
-            <StatCard label="Locked" value={lockedCount} color="var(--color-success)" />
-          </div>
+          <StatStrip
+            items={[
+              { label: "Drafts", value: draftCount, color: "var(--color-text-secondary)" },
+              { label: "Submitted", value: submittedCount, color: "var(--color-primary)" },
+              { label: "Locked", value: lockedCount, color: "var(--color-success)" },
+            ]}
+          />
 
           {/* Quick actions */}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 32 }}>
@@ -94,11 +96,13 @@ export function DashboardPage() {
       {/* Manager Dashboard */}
       {role === "manager" && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
-            <StatCard label="Pending Review" value={pendingCount} color="var(--color-accent)" />
-            <StatCard label="Submitted This Week" value={submittedCount} color="var(--color-primary)" />
-            <StatCard label="Locked" value={lockedCount} color="var(--color-success)" />
-          </div>
+          <StatStrip
+            items={[
+              { label: "Pending Review", value: pendingCount, color: "var(--color-accent)" },
+              { label: "Submitted This Week", value: submittedCount, color: "var(--color-primary)" },
+              { label: "Locked", value: lockedCount, color: "var(--color-success)" },
+            ]}
+          />
 
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 32 }}>
             <Link to="/reviews" style={{ textDecoration: "none" }}>
@@ -172,18 +176,59 @@ export function DashboardPage() {
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+function StatStrip({
+  items,
+}: {
+  items: Array<{ label: string; value: number; color: string }>;
+}) {
   return (
-    <div style={{
-      backgroundColor: "var(--color-surface)",
-      border: "1px solid var(--color-border)",
-      borderRadius: 8,
-      padding: 16,
-      boxShadow: "var(--shadow-card)",
-      borderLeft: `3px solid ${color}`,
-    }}>
-      <div style={{ fontSize: 28, fontWeight: 700, color, fontFamily: "'Courier New', monospace" }}>{value}</div>
-      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>{label}</div>
+    <div
+      aria-label="Record counts"
+      style={{
+        display: "flex",
+        alignItems: "stretch",
+        marginBottom: 24,
+        padding: "2px 0",
+      }}
+    >
+      {items.map((item, idx) => (
+        <div
+          key={item.label}
+          style={{
+            flex: "1 1 0",
+            padding: "2px 14px",
+            borderRight:
+              idx < items.length - 1
+                ? "1px solid var(--color-border)"
+                : "none",
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: item.color,
+              fontFamily: "'Courier New', monospace",
+              lineHeight: 1.1,
+            }}
+          >
+            {item.value}
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--color-text-secondary)",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+            }}
+          >
+            {item.label}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
