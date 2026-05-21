@@ -118,7 +118,14 @@ export function createLoopbackTransport(
       if (blocked) {
         return { ...rejected("VALIDATION_FAILED", blocked.message), opId: op.opId };
       }
-      const submittedAt = now();
+      // Pull submitter identity from the op's payload. The local submit
+      // service stamps these locally for immediate UI feedback and ALSO sends
+      // them with the op so the server's "applied" response carries them
+      // through `adoptServerRecord` instead of overwriting them with
+      // undefined (which breaks the chain-of-custody rule at lock time).
+      const payload =
+        (op.payload as { submittedBy?: string; submittedAt?: string }) ?? {};
+      const submittedAt = payload.submittedAt ?? now();
       const next: ApplicationRecord = {
         ...record,
         workflowStatus: "pending_review",
@@ -127,6 +134,7 @@ export function createLoopbackTransport(
         etag: newEtag(),
         contractorInputs: {
           ...record.contractorInputs,
+          submittedBy: payload.submittedBy ?? record.contractorInputs.submittedBy,
           submittedAt,
         },
         system: { ...record.system, lastUpdatedAt: submittedAt },

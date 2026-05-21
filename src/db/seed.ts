@@ -1,13 +1,15 @@
 import { db } from "./fieldlogDb";
 import type {
-  Applicator,
-  Farm,
-  FieldSite,
   Organization,
   Product,
   User,
 } from "../domain/types";
 import { buildRupProductSeed } from "./seedRupProducts";
+import {
+  DEMO_APPLICATORS,
+  DEMO_FARMS,
+  DEMO_FIELDS,
+} from "./seedDemoRecords";
 
 const now = () => new Date().toISOString();
 
@@ -44,32 +46,6 @@ export async function seedDemoData() {
     createdAt: now(),
   };
 
-  const farm: Farm = {
-    id: "farm-north",
-    organizationId: DEMO_ORG_ID,
-    name: "North Farm",
-    createdAt: now(),
-  };
-
-  const field: FieldSite = {
-    id: "field-7",
-    organizationId: DEMO_ORG_ID,
-    farmId: farm.id,
-    name: "Field 7",
-    defaultAcres: 42.5,
-    defaultCropOrSite: "Soybeans",
-    createdAt: now(),
-  };
-
-  const applicator: Applicator = {
-    id: "applicator-john-smith",
-    organizationId: DEMO_ORG_ID,
-    contractorCompanyName: "Smith Spray Services",
-    applicatorName: "John Smith",
-    certificationNumber: "MO-123456",
-    createdAt: now(),
-  };
-
   const product: Product = {
     id: "product-example-herbicide-4l",
     catalogVersion: "MO-DEMO-2026-05-19",
@@ -90,11 +66,18 @@ export async function seedDemoData() {
     async () => {
       await db.organizations.add(organization);
       await db.users.bulkAdd([applicatorUser, managerUser]);
-      await db.farms.add(farm);
-      await db.fields.add(field);
-      await db.applicators.add(applicator);
+      await db.farms.bulkAdd(DEMO_FARMS);
+      await db.fields.bulkAdd(DEMO_FIELDS);
+      await db.applicators.bulkAdd(DEMO_APPLICATORS);
       await db.products.add(product);
       await db.products.bulkAdd(rupProducts);
     }
   );
+
 }
+
+// Records seed is a separate entry point so production boot can populate the
+// app with a varied set of demo records while every test continues to start
+// from an empty records table. main.tsx calls both; tests that need records
+// build them inline (per-test fixtures) so assertions stay deterministic.
+export { seedDemoRecords } from "./seedDemoRecords";

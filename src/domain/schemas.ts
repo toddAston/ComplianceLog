@@ -26,6 +26,54 @@ export const applicatorCategorySchema = z.enum([
   "unknown",
 ]);
 
+// 2 CSR 70-25.100 + .140 — Missouri's pesticide certification category codes.
+// Orthogonal to `applicatorCategorySchema` (which is license type / role):
+// one applicator can hold MULTIPLE category codes (e.g. Cat 1a Agricultural
+// Plant + Cat 3 Ornamental). Certified commercial / noncommercial / public
+// operators use Cat 1-13; private applicators use Cat 20-23. Captured on the
+// Applicator entity so the §.010(3)(C)(1) "supervisor must be certified in the
+// category of use" rule has data to enforce against (rule itself is a
+// follow-up; the data capture is foundational).
+export const licenseCategoryCodeSchema = z.enum([
+  // Commercial / noncommercial / public operator categories (Cat 1-13)
+  "cat_1_agricultural",
+  "cat_1a_agricultural_plant",
+  "cat_1b_agricultural_animal",
+  "cat_2_forest",
+  "cat_3_ornamental_turf",
+  "cat_4_seed_treatment",
+  "cat_5_aquatic",
+  "cat_5b_sewer_root",
+  "cat_6_right_of_way",
+  "cat_7_structural",
+  "cat_7a_general_structural",
+  "cat_7b_termite",
+  "cat_7c_fumigation",
+  "cat_8_public_health",
+  "cat_9_regulatory",
+  "cat_10_demonstration_research",
+  "cat_11_wood_products",
+  "cat_12_soil_fumigation",
+  "cat_13_aerial",
+  // Private applicator categories (Cat 20-23)
+  "cat_20_general_agricultural",
+  "cat_21_soil_fumigation",
+  "cat_22_non_soil_fumigation",
+  "cat_23_aerial",
+]);
+export type LicenseCategoryCode = z.infer<typeof licenseCategoryCodeSchema>;
+
+// 2 CSR 70-25.153(1) — Noncertified RUP applicator retraining cycle is set
+// by training type: CORE exam = 3-year cycle; approved training program =
+// 1-year cycle. The cycle is computed from training type + date.
+export const noncertifiedRupTrainingTypeSchema = z.enum([
+  "core_exam",
+  "training_program",
+]);
+export type NoncertifiedRupTrainingType = z.infer<
+  typeof noncertifiedRupTrainingTypeSchema
+>;
+
 // Matrix #65-#67: a single product in a tank mix. All sub-fields are optional
 // because mid-drafted entries are common; the rules detect incompleteness on
 // each filled entry and emit MISSING_REQUIRED_FIELD when a required sub-field
@@ -131,6 +179,34 @@ export const applicatorSchema = z.object({
   applicatorName: z.string(),
   certificationNumber: z.string().optional(),
   createdAt: z.string(),
+
+  // Optional contact + classification fields surfaced in the contractor detail
+  // dialog. Adding them as optional keeps the existing seeded rows valid and
+  // does NOT require a Dexie schema bump (Dexie stores opaque JSON). Filled in
+  // by the manager when editing a contractor.
+  emailAddress: z.string().optional(),
+  phoneNumber: z.string().optional(),
+  // Default ApplicatorCategory this applicator carries — used as a hint when
+  // a record is drafted under this applicator's id; the per-record form can
+  // still override.
+  defaultApplicatorCategory: applicatorCategorySchema.optional(),
+  // Expiry date for `certificationNumber`. ISO date (YYYY-MM-DD). Used to
+  // surface "expires soon" warnings on the contractor detail screen.
+  licenseExpiryDate: z.string().optional(),
+  // Free-text notes the manager can attach to this applicator.
+  notes: z.string().optional(),
+
+  // 2 CSR 70-25.100 + .140 — categories of certification this applicator
+  // currently holds. Multiple are common (Cat 1a + Cat 3 + Cat 7a). Foundation
+  // for the §.010(3)(C)(1) "supervisor certified in the category of use" rule.
+  licenseCategoryCodes: z.array(licenseCategoryCodeSchema).optional(),
+
+  // 2 CSR 70-25.153(1) — noncertified RUP retraining cycle inputs. Expiry is
+  // DERIVED at render time: training_program + date → +1 year; core_exam +
+  // date → +3 years. Stored separately from `licenseExpiryDate` (which is the
+  // manual override for non-noncertified-RUP licenses).
+  noncertifiedRupTrainingType: noncertifiedRupTrainingTypeSchema.optional(),
+  noncertifiedRupTrainingDate: z.string().optional(),
 });
 
 export const productSchema = z.object({
@@ -307,6 +383,21 @@ export const contractorInputsSchema = z.object({
   workOrderAcknowledged: z.boolean().optional(),
   labelInPossessionAcknowledged: z.boolean().optional(),
   equipmentReadinessAcknowledged: z.boolean().optional(),
+
+  // 2 CSR 70-25.010(3)(C)(7) — certified supervisor must be available by
+  // phone and respond in person when needed while the noncertified actor is
+  // using pesticides.
+  supervisorPhoneAvailable: z.boolean().optional(),
+  // 2 CSR 70-25.010(3)(C)(8) — certified supervisor must be at the use site
+  // when the pesticide label specifically requires it.
+  supervisorOnSiteIfLabelRequires: z.boolean().optional(),
+  // 2 CSR 70-25.010(3)(C)(3)(A-C) — the work order/job ticket in the
+  // noncertified actor's possession must contain a minimum content set:
+  // certified applicator's name + license #; noncertified applicator's name +
+  // license # (if any); requester name + site address-or-description +
+  // application date. Distinct from `workOrderAcknowledged` (which only asks
+  // "does a work order exist?") — this one attests the work order's CONTENTS.
+  workOrderMinimumContentVerified: z.boolean().optional(),
 });
 
 export const managerInputsSchema = z.object({

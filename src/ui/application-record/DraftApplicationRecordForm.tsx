@@ -343,12 +343,24 @@ export function DraftApplicationRecordForm({
 
   const fillWithDemoData = () => {
     const org = organizations[0];
-    const applicator = applicators[0];
-    const farm = farms[0];
+    // Prefer the canonical demo applicator / farm / field / product when the
+    // seed has them — falls back to the first row only if those ids aren't
+    // present. The seed now contains many applicators across multiple farms,
+    // so the previous `[0]`-by-index approach lands on whichever row Dexie
+    // returns first alphabetically (not "John Smith / North Farm").
+    const applicator =
+      applicators.find((a) => a.id === "applicator-john-smith") ??
+      applicators[0];
+    const farm =
+      farms.find((f) => f.id === "farm-north") ?? farms[0];
     const fieldForFarm = farm
-      ? fields.find((f) => f.farmId === farm.id) ?? fields[0]
+      ? fields.find((f) => f.id === "field-7") ??
+        fields.find((f) => f.farmId === farm.id) ??
+        fields[0]
       : fields[0];
-    const product = products[0];
+    const product =
+      products.find((p) => p.id === "product-example-herbicide-4l") ??
+      products[0];
     if (!org || !applicator || !farm || !fieldForFarm || !product) return;
 
     const opts = { shouldDirty: true, shouldValidate: false } as const;

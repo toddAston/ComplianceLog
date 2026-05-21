@@ -209,6 +209,15 @@ export async function submitApplicationRecord(
           recordId: record.id,
           kind: "submit",
           baseEtag: record.etag,
+          // Submitter identity must travel with the op so the server side
+          // (loopback today, real backend later) can persist it. Without this,
+          // the server's "applied" response would overwrite the locally
+          // stamped submittedBy with undefined, breaking the chain-of-custody
+          // rule at lock time.
+          payload: {
+            submittedBy: actor.displayName,
+            submittedAt,
+          },
         })
       );
     }
@@ -234,6 +243,36 @@ export async function acceptAndLockApplicationRecord(
 
   if (!record.productSnapshotId) {
     throw new Error("Cannot lock a record without a product snapshot.");
+  }
+
+  // In-line heal for chain-of-custody: if a prior sync writeback wiped the
+  // contractorInputs submitter stamps, recover them from the append-only
+  // `submitted` event before running compliance checks. The event always
+  // carries the actor's displayName + occurredAt, so this is lossless.
+  if (
+    !record.contractorInputs.submittedBy?.trim() ||
+    !record.contractorInputs.submittedAt?.trim()
+  ) {
+    const events = await db.recordEvents
+      .where("applicationRecordId")
+      .equals(record.id)
+      .toArray();
+    const submitted = events
+      .filter((e) => e.type === "submitted")
+      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))[0];
+    if (submitted?.actorDisplayName && submitted?.occurredAt) {
+      record.contractorInputs = {
+        ...record.contractorInputs,
+        submittedBy:
+          record.contractorInputs.submittedBy?.trim() ||
+          submitted.actorDisplayName,
+        submittedAt:
+          record.contractorInputs.submittedAt?.trim() || submitted.occurredAt,
+      };
+      await db.applicationRecords.update(record.id, {
+        contractorInputs: record.contractorInputs,
+      });
+    }
   }
 
   // Required-field and explicit-rule checks must clear before a manager can lock
