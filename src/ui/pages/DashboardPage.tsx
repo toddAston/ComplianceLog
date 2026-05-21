@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useSession } from "../session/SessionContext";
 import { useAllApplicationRecords } from "../../db/queries";
 import type { ApplicationRecord } from "../../domain/types";
+import { DraftsList } from "../application-record/DraftsList";
 
 export function DashboardPage() {
   const { role, actor } = useSession();
@@ -79,16 +80,15 @@ export function DashboardPage() {
             </Link>
           </div>
 
-          {/* Recent records */}
+          {/* Recent records — reuses the same row component as the /records
+              page (DraftsList) so the dashboard surfaces real workflow chips,
+              submit affordance, and details click target instead of a
+              simplified card. Capped at 5 for the dashboard surface. */}
           <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>Recent Records</h2>
           {records.length === 0 ? (
             <EmptyState />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {records.slice(0, 5).map((r) => (
-                <RecordCard key={r.id} record={r} />
-              ))}
-            </div>
+            <DraftsList limit={5} />
           )}
         </>
       )}

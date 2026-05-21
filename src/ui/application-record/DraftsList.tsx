@@ -85,10 +85,22 @@ function syncChipColor(
   }
 }
 
-export function DraftsList() {
+export type DraftsListProps = {
+  /**
+   * Cap the rendered row count. When set, only the first `limit` records
+   * (in storage order) are shown — used by the Dashboard "Recent Records"
+   * surface so it reuses these rows without listing every record. Omit on
+   * the full Records page.
+   */
+  limit?: number;
+};
+
+export function DraftsList({ limit }: DraftsListProps = {}) {
   const role = useSessionRole();
   const showManagerAffordances = role === "manager";
-  const records = useAllApplicationRecords();
+  const allRecords = useAllApplicationRecords();
+  const records =
+    typeof limit === "number" ? allRecords.slice(0, limit) : allRecords;
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [correctionNotes, setCorrectionNotes] = useState<
