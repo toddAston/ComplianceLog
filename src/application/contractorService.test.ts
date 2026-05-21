@@ -99,20 +99,22 @@ describe("inviteContractor", () => {
     expect(await db.applicators.count()).toBe(2);
   });
 
-  it("uses the default invite base URL when VITE_INVITE_BASE_URL is unset", async () => {
+  it("defaults to window.origin when VITE_INVITE_BASE_URL is unset (clickable in dev)", async () => {
     vi.stubEnv("VITE_INVITE_BASE_URL", "");
     const result = await inviteContractor({
       organizationId: ORG,
       applicatorName: "Default",
       contractorCompanyName: "Co",
     });
+    // jsdom sets window.location.origin to "http://localhost:3000" by
+    // default. In any browser/test environment we get a clickable link.
     expect(result.inviteLink).toBe(
-      `https://fieldlog.invite/${result.inviteToken}`
+      `${window.location.origin}/invite/${result.inviteToken}`
     );
   });
 
-  it("uses VITE_INVITE_BASE_URL when set", async () => {
-    vi.stubEnv("VITE_INVITE_BASE_URL", "https://staging.fieldlog.app/invite");
+  it("uses VITE_INVITE_BASE_URL + /invite/<token> when set", async () => {
+    vi.stubEnv("VITE_INVITE_BASE_URL", "https://staging.fieldlog.app");
     const result = await inviteContractor({
       organizationId: ORG,
       applicatorName: "Override",
@@ -131,12 +133,12 @@ describe("inviteContractor", () => {
       contractorCompanyName: "Co",
     });
     expect(result.inviteLink).toBe(
-      `https://example.com/path/${result.inviteToken}`
+      `https://example.com/path/invite/${result.inviteToken}`
     );
-    expect(result.inviteLink).not.toContain("//" + result.inviteToken);
+    expect(result.inviteLink).not.toContain("//invite/");
   });
 
-  it("falls back to the default when VITE_INVITE_BASE_URL is whitespace-only", async () => {
+  it("falls back to window.origin when VITE_INVITE_BASE_URL is whitespace-only", async () => {
     vi.stubEnv("VITE_INVITE_BASE_URL", "   ");
     const result = await inviteContractor({
       organizationId: ORG,
@@ -144,8 +146,17 @@ describe("inviteContractor", () => {
       contractorCompanyName: "Co",
     });
     expect(result.inviteLink).toBe(
-      `https://fieldlog.invite/${result.inviteToken}`
+      `${window.location.origin}/invite/${result.inviteToken}`
     );
+  });
+
+  it("produces a link that points at the /invite/:token route shape", async () => {
+    const result = await inviteContractor({
+      organizationId: ORG,
+      applicatorName: "Route Shape",
+      contractorCompanyName: "Co",
+    });
+    expect(result.inviteLink).toMatch(/\/invite\/[0-9a-f-]+$/i);
   });
 
   it("produces distinct invite tokens across two invites", async () => {

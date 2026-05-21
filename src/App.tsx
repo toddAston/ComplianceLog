@@ -11,6 +11,7 @@ import { ReviewsPage } from "./ui/pages/ReviewsPage";
 import { ContractorsPage } from "./ui/pages/ContractorsPage";
 import { FarmsPage } from "./ui/pages/FarmsPage";
 import { SettingsPage } from "./ui/pages/SettingsPage";
+import { InviteAcceptPage } from "./ui/pages/InviteAcceptPage";
 import { NotFoundPage } from "./ui/pages/NotFoundPage";
 
 function App() {
@@ -21,6 +22,9 @@ function App() {
           {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          {/* Invite-accept landing — outside RequireAuth so the invitee can
+              land on it before signing in. Token is informational in v0.1. */}
+          <Route path="/invite/:token" element={<InviteAcceptPage />} />
 
           {/* Protected routes — RequireAuth redirects to /login when the
               session is not authenticated, preserving the original path so

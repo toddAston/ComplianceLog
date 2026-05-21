@@ -8,13 +8,24 @@ import type {
 const id = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 
-const DEFAULT_INVITE_BASE_URL = "https://fieldlog.invite";
-
+// Default base URL falls back to the current window origin so the invite
+// link is clickable during the demo (the old default
+// `https://fieldlog.invite` was a placeholder that 404'd in any browser).
+// Explicit `VITE_INVITE_BASE_URL` still wins for production / staging.
+// Server / test environments without `window` get a benign placeholder; the
+// invite token is the payload, the base just keeps the link well-formed.
 function resolveInviteBaseUrl(): string {
   const raw = import.meta.env.VITE_INVITE_BASE_URL?.trim();
-  const base = raw && raw.length > 0 ? raw : DEFAULT_INVITE_BASE_URL;
-  return base.replace(/\/+$/, "");
+  if (raw && raw.length > 0) return raw.replace(/\/+$/, "");
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin.replace(/\/+$/, "");
+  }
+  return "https://fieldlog.invite";
 }
+
+// Route path the invite link points at — wired in App.tsx (`/invite/:token`).
+// Lifted to a constant so tests and the inviteLink shape stay in lockstep.
+export const INVITE_PATH_PREFIX = "/invite";
 
 export type InviteContractorInput = {
   organizationId: string;
@@ -75,7 +86,7 @@ export async function inviteContractor(
   await db.applicators.add(applicator);
 
   const inviteToken = id();
-  const inviteLink = `${resolveInviteBaseUrl()}/${inviteToken}`;
+  const inviteLink = `${resolveInviteBaseUrl()}${INVITE_PATH_PREFIX}/${inviteToken}`;
 
   return { applicator, inviteToken, inviteLink };
 }
