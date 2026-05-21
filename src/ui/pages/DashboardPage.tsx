@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { useSession } from "../session/SessionContext";
 import { useAllApplicationRecords } from "../../db/queries";
-import { RoleToggle } from "../session/RoleToggle";
 import type { ApplicationRecord } from "../../domain/types";
 
 export function DashboardPage() {
@@ -31,9 +30,6 @@ export function DashboardPage() {
           }}>
             {role === "manager" ? "Manager" : "Applicator"}
           </span>
-        </div>
-        <div style={{ marginTop: 8 }}>
-          <RoleToggle />
         </div>
       </div>
 
