@@ -105,7 +105,12 @@ describe("ContractorManager", () => {
     ]);
     render(<ContractorManager organizationId={ORG} />);
 
-    expect(await screen.findByText(/Mine/)).toBeTruthy();
+    // With company grouping, "Mine" appears both in the company heading
+    // ("Mine Co") and inside the applicator card ("Mine"). Use findAllByText
+    // and assert one of those is the applicator name. The other-org row
+    // must not appear at all.
+    const mineMatches = await screen.findAllByText(/Mine/);
+    expect(mineMatches.length).toBeGreaterThan(0);
     expect(screen.queryByText(/Theirs/)).toBeNull();
   });
 

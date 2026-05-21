@@ -19,6 +19,7 @@ import { conditionalApplicabilityRules } from "./rules/conditionalApplicability"
 import { labelVerificationRules } from "./rules/labelVerification";
 import { tankMixRules } from "./rules/tankMix";
 import { supervisionRules } from "./rules/supervision";
+import { directSupervisionRules } from "./rules/directSupervision";
 import { evidenceQualityRules } from "./rules/evidenceQuality";
 
 export const rules: ComplianceRule[] = [
@@ -39,6 +40,7 @@ export const rules: ComplianceRule[] = [
   // P2
   ...tankMixRules,
   ...supervisionRules,
+  ...directSupervisionRules,
   ...evidenceQualityRules,
 ];
 

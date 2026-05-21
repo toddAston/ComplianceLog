@@ -17,6 +17,8 @@ import type {
   ApplicatorCategory,
   ContractorInputs,
 } from "../../domain/types";
+import { nwsWeatherAdapter } from "../../application/nwsWeatherAdapter";
+import type { WeatherService } from "../../application/weatherService";
 
 const STEP_LABELS = ["Farm & Field", "Product", "Application Details", "Weather", "Review & Attest"];
 
@@ -31,7 +33,14 @@ const APPLICATOR_CATEGORY_OPTIONS: { value: ApplicatorCategory; label: string }[
   { value: "trainee", label: "Trainee" },
 ];
 
-export function RecordCreatePage() {
+export type RecordCreatePageProps = {
+  // Injectable for tests; production uses the live NWS adapter.
+  weatherService?: WeatherService;
+};
+
+export function RecordCreatePage({
+  weatherService = nwsWeatherAdapter,
+}: RecordCreatePageProps = {}) {
   const navigate = useNavigate();
   const { actor } = useSession();
   const [step, setStep] = useState(0);
@@ -63,6 +72,14 @@ export function RecordCreatePage() {
   const [requesterName, setRequesterName] = useState("");
   const [requesterAddress, setRequesterAddress] = useState("");
   const [labelReviewed, setLabelReviewed] = useState(false);
+  // 2 CSR 70-25.010(3)(C)(7), (8), (3)(A-C): direct-supervision acknowledgments.
+  // Only surfaced in the UI when applicatorCategory ∈ noncertified family;
+  // captured in the contractor inputs so the compliance engine can clear
+  // SUPERVISOR_PHONE_NOT_AVAILABLE / SUPERVISOR_NOT_ON_SITE_WHEN_LABEL_REQUIRES
+  // / WORK_ORDER_MINIMUM_CONTENT_NOT_VERIFIED.
+  const [supervisorPhoneAvailable, setSupervisorPhoneAvailable] = useState(false);
+  const [supervisorOnSiteIfLabelRequires, setSupervisorOnSiteIfLabelRequires] = useState(false);
+  const [workOrderMinimumContentVerified, setWorkOrderMinimumContentVerified] = useState(false);
   const [attested, setAttested] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -162,6 +179,13 @@ export function RecordCreatePage() {
       labelReiPhiReviewed: labelReviewed || undefined,
       labelDriftBufferReviewed: labelReviewed || undefined,
 
+      // 2 CSR 70-25.010(3)(C) direct-supervision acks. Only emitted when the
+      // operator has actually ticked the box — leaving them undefined lets the
+      // compliance engine surface them as NEEDS_REVIEW for noncertified actors.
+      supervisorPhoneAvailable: supervisorPhoneAvailable || undefined,
+      supervisorOnSiteIfLabelRequires: supervisorOnSiteIfLabelRequires || undefined,
+      workOrderMinimumContentVerified: workOrderMinimumContentVerified || undefined,
+
       attestationConfirmed: attested,
     };
   };
@@ -210,6 +234,27 @@ export function RecordCreatePage() {
     failingChecks.length === 0 &&
     reviewRequiredChecks.length === 0;
 
+  // Save-draft gate: a contractor cannot persist a draft until every required
+  // field is filled (matrix #16-#25 + the form-level Farm/Field/Product nudges).
+  // We surface the union — form-level missingRequired plus compliance engine
+  // MISSING_REQUIRED_FIELD failures — so the user sees a single list of what
+  // still has to be entered. Only severity error/blocked are gated; warning-
+  // severity required fields (e.g. weather rules tagged MISSING_REQUIRED_FIELD
+  // but surfaced as advisory warnings) stay non-blocking — this mirrors the
+  // accept/lock gate in applicationRecordService.
+  const missingComplianceFields = failingChecks
+    .filter(
+      (o) =>
+        o.resultCode === "MISSING_REQUIRED_FIELD" &&
+        (o.severity === "error" || o.severity === "blocked")
+    )
+    .map((o) => o.ruleId);
+  const missingForSave: string[] = [
+    ...missingRequired,
+    ...missingComplianceFields,
+  ];
+  const canSaveDraftStrict = canSaveDraft && missingForSave.length === 0;
+
   const handleCaptureLocation = () => {
     setGpsError(null);
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -218,12 +263,38 @@ export function RecordCreatePage() {
     }
     setGpsCapturing(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGpsCoords({
-          lat: String(pos.coords.latitude),
-          lng: String(pos.coords.longitude),
-        });
-        setGpsCapturing(false);
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setGpsCoords({ lat: String(lat), lng: String(lng) });
+
+        // After we have coordinates, fetch the live NWS observation for that
+        // point and pre-fill the weather inputs. We only overwrite fields that
+        // the operator has left blank — once they've typed something, we trust
+        // their input.
+        try {
+          const result = await weatherService.fetchCurrent({
+            latitude: lat,
+            longitude: lng,
+          });
+          if (result.kind === "ok") {
+            const r = result.reading;
+            if (!weatherTemp && r.temperatureF !== undefined) {
+              setWeatherTemp(String(Math.round(r.temperatureF)));
+            }
+            if (!weatherWind && r.windSpeedMph !== undefined) {
+              setWeatherWind(String(Math.round(r.windSpeedMph)));
+            }
+            if (!weatherWindDir && r.windDirection !== undefined) {
+              setWeatherWindDir(r.windDirection);
+            }
+          }
+        } catch {
+          // Weather fetch is opportunistic — a failure does not block the GPS
+          // capture itself. The operator can still enter weather manually.
+        } finally {
+          setGpsCapturing(false);
+        }
       },
       (err) => {
         setGpsError(err.message || "Unable to capture location.");
@@ -234,6 +305,17 @@ export function RecordCreatePage() {
 
   const handleSaveDraft = async () => {
     setSaveError(null);
+    if (!canSaveDraftStrict) {
+      // Defensive — the buttons that drive this are disabled when this is
+      // the case, but a keyboard / programmatic invocation could still reach
+      // here. Surface the list of missing fields rather than silently no-oping.
+      setSaveError(
+        missingForSave.length > 0
+          ? `Cannot save draft — required fields missing: ${missingForSave.join(", ")}.`
+          : "Select a farm, field, and product before saving."
+      );
+      return;
+    }
     if (!canSaveDraft || !selectedFarm || !selectedField || !selectedProduct) {
       setSaveError("Select a farm, field, and product before saving.");
       return;
@@ -258,10 +340,12 @@ export function RecordCreatePage() {
     else handleSaveDraft();
   };
 
-  // Step 3 gate: End Time is required before advancing.
+  // Step 3 gate: End Time is required before advancing. Final step gate also
+  // requires all required fields to be present — Save Draft must not let a
+  // contractor persist a record with `MISSING_REQUIRED_FIELD` failures.
   const nextDisabled = (() => {
     if (step === 2 && !timeEnd) return true;
-    if (step === 4) return !attested || !canSaveDraft || saving;
+    if (step === 4) return !attested || !canSaveDraftStrict || saving;
     return false;
   })();
 
@@ -288,19 +372,25 @@ export function RecordCreatePage() {
         )}
         <button
           type="button"
+          data-testid="save-draft-button"
           onClick={handleSaveDraft}
-          disabled={!canSaveDraft || saving}
+          disabled={!canSaveDraftStrict || saving}
+          title={
+            !canSaveDraftStrict
+              ? `Required fields still missing: ${missingForSave.join(", ") || "Farm, Field, Product"}`
+              : undefined
+          }
           style={{
             height: 36,
             padding: "0 14px",
             backgroundColor:
-              !canSaveDraft || saving ? "#c8c8c8" : "var(--color-primary)",
-            color: !canSaveDraft || saving ? "#646464" : "#ffffff",
+              !canSaveDraftStrict || saving ? "#c8c8c8" : "var(--color-primary)",
+            color: !canSaveDraftStrict || saving ? "#646464" : "#ffffff",
             border: "none",
             borderRadius: 6,
             fontSize: 13,
             fontWeight: 500,
-            cursor: !canSaveDraft || saving ? "not-allowed" : "pointer",
+            cursor: !canSaveDraftStrict || saving ? "not-allowed" : "pointer",
           }}
         >
           {saving ? "Saving…" : "Save Draft"}
@@ -458,7 +548,15 @@ export function RecordCreatePage() {
             <FormField label="Wind Direction">
               <select value={weatherWindDir} onChange={(e) => setWeatherWindDir(e.target.value)} style={selectStyle}>
                 <option value="">Select...</option>
-                {["N", "NE", "E", "SE", "S", "SW", "W", "NW"].map((d) => (
+                {/* 16-point cardinal compass so NWS readings (which return 16-point
+                    cardinals like NNE / SSW) can drop directly into this control
+                    after a GPS-driven weather fetch. */}
+                {[
+                  "N", "NNE", "NE", "ENE",
+                  "E", "ESE", "SE", "SSE",
+                  "S", "SSW", "SW", "WSW",
+                  "W", "WNW", "NW", "NNW",
+                ].map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>
@@ -596,6 +694,47 @@ export function RecordCreatePage() {
             )}
           />
 
+          {/* Direct supervision acks — only when the applicator category is
+              part of the noncertified family. Each ack maps to a single rule in
+              src/application/compliance/rules/directSupervision.ts. */}
+          {/noncertified|trainee|technician/.test(applicatorCategory) && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                padding: 12,
+                borderRadius: 6,
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>
+                Direct supervision acknowledgments
+              </div>
+              <SupervisionAck
+                testId="supervision-phone-available-ack"
+                label="Supervisor reachable by phone during the application"
+                citation="Missouri 2 CSR 70-25.010(3)(C)(7)"
+                checked={supervisorPhoneAvailable}
+                onChange={setSupervisorPhoneAvailable}
+              />
+              <SupervisionAck
+                testId="supervision-on-site-ack"
+                label="Supervisor on site when the label requires"
+                citation="Missouri 2 CSR 70-25.010(3)(C)(8)"
+                checked={supervisorOnSiteIfLabelRequires}
+                onChange={setSupervisorOnSiteIfLabelRequires}
+              />
+              <SupervisionAck
+                testId="supervision-work-order-content-ack"
+                label="Work order contains required content (applicator names + licenses, requester, site, date)"
+                citation="Missouri 2 CSR 70-25.010(3)(C)(3)"
+                checked={workOrderMinimumContentVerified}
+                onChange={setWorkOrderMinimumContentVerified}
+              />
+            </div>
+          )}
+
           {/* Attestation */}
           <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", padding: 12, borderRadius: 6, border: "1px solid var(--color-border)" }}>
             <input
@@ -625,6 +764,45 @@ function FormField({ label, required, children }: { label: string; required?: bo
         {label} {required && <span style={{ color: "var(--color-error)" }}>*</span>}
       </div>
       {children}
+    </label>
+  );
+}
+
+function SupervisionAck({
+  testId,
+  label,
+  citation,
+  checked,
+  onChange,
+}: {
+  testId: string;
+  label: string;
+  citation: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 10,
+        cursor: "pointer",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        data-testid={testId}
+        style={{ width: 18, height: 18, accentColor: "var(--color-primary)", marginTop: 2 }}
+      />
+      <div>
+        <div style={{ fontSize: 13, color: "var(--color-text)" }}>{label}</div>
+        <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
+          {citation}
+        </div>
+      </div>
     </label>
   );
 }

@@ -88,6 +88,36 @@ The client's `src/domain/schemas.ts` has been actively expanded (matrix #1-72 co
 
 When working on the sync layer or any feature that crosses the network boundary, treat the four layers — **client Zod (`src/domain/schemas.ts`), openapi spec (`docs/architecture/api/openapi.yaml`), server Drizzle (`server/src/db/schema.ts`), and server route mappers (`server/src/routes/*.ts`)** — as a single contract that must move together.
 
+# Known Regulatory Gaps (2 CSR 70-25)
+
+After the full read of the compiled Missouri regulation PDF, three obligations are
+intentionally **not yet captured** in the compliance engine. Recording them here so
+future work doesn't re-discover them as "missing":
+
+1. **§.156 Pesticide technician notification cadence.** Employer must notify the
+   director within 10 days of a technician's employment OR discontinuation;
+   Notice of Training form retained 3 years. Pure administrative tracking with
+   no per-record compliance angle — would belong on a "Notices Due" surface
+   (manager tickler / audit dashboard), not the per-record `ComplianceChecklistPanel`.
+2. **§.010(11) Limited rodent fumigation.** Calcium cyanide for rodents at >10 ft
+   from buildings is restricted to General Structural Pest Control certified
+   applicators. Our curated RUP catalog seeds zinc-phosphide rodenticides but
+   no calcium cyanide products today, so adding a rule for an absent product
+   family would be dead weight. Worth wiring when the catalog expands.
+3. **§.010(22) Structure definition.** Missouri's "Structure" is broader than our
+   `structuralTermiteWithin10ft` flag (covers the building's contents, adjacent
+   harborage land, vehicles used as common carriers). Captured as a tooltip /
+   help-text refinement on the indoor-exemption flag rather than a new rule,
+   pending a follow-up.
+
+Also pending — the §.010(3)(C)(1) "supervisor certified in the category of use"
+rule. The applicator-side data (license category codes) IS now captured via
+`licenseCategoryCodes` on `applicatorSchema` (2 CSR 70-25.100 + .140 enum), but
+the rule itself needs a mapping from "application context" to "required
+category" (e.g. termiticide → Cat 7b Termite) before it can fire. See
+`src/application/compliance/rules/directSupervision.ts` for the existing
+§.010(3)(C)(7) / (8) / (3) coverage; the category-match check joins that family.
+
 # Dexie Schema Upgrades
 IndexedDB schema migrations are forward-only by Dexie's design — there is no rollback once a user's browser has run `db.version(N).stores(...)`. The current schema is `v1` in `src/db/fieldlogDb.ts`. Rules:
 
