@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { authenticateForTests } from "../session/testAuth";
 import {
   cleanup,
   render,
@@ -18,6 +19,8 @@ import { seedDemoData } from "../../db/seed";
 beforeEach(async () => {
   await Promise.all(db.tables.map((t) => t.clear()));
   await seedDemoData();
+  // Pre-authenticate so RequireAuth doesn't bounce the deep link to /login.
+  authenticateForTests("contractor");
   window.history.pushState({}, "", "/records/new");
 });
 

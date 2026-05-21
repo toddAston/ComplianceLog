@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { authenticateForTests } from "../session/testAuth";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../../App";
@@ -11,6 +12,7 @@ import { seedDemoData } from "../../db/seed";
 beforeEach(async () => {
   await Promise.all(db.tables.map((t) => t.clear()));
   await seedDemoData();
+  authenticateForTests("contractor");
   window.history.pushState({}, "", "/records/new");
 });
 
@@ -131,14 +133,31 @@ describe("RecordCreatePage product picker — curated RUP catalog", () => {
       expect(screen.getByText(/EPA Reg #:\s*100-1075/i)).toBeTruthy();
     });
 
-    // Use the OUTER "Save Draft" button (top right), enabled as soon as
-    // farm + field + product are picked — matches the existing integration
-    // test pattern in DraftApplicationRecordForm.test.tsx.
-    const saveButtons = screen.getAllByRole("button", { name: /Save Draft/i });
-    // On step 2 (Product), the stepper's Next still reads "Next", so there is
-    // exactly one Save Draft button in the DOM at this moment.
-    expect(saveButtons.length).toBe(1);
-    await user.click(saveButtons[0]);
+    // Advance past Product to Step 3 and fill every error-severity required
+    // field. The contractor-side strict Save Draft gate refuses to persist a
+    // draft until each MISSING_REQUIRED_FIELD compliance rule clears.
+    await user.click(screen.getByRole("button", { name: /^Next/i }));
+    await user.type(screen.getByLabelText(/Time Start/i), "08:30");
+    await user.type(screen.getByLabelText(/Time End/i), "11:30");
+    await user.type(screen.getByLabelText(/Target Pest/i), "Waterhemp");
+    await user.type(screen.getByLabelText(/Rate per Acre/i), "22");
+    await user.type(screen.getByLabelText(/Total Amount/i), "880");
+    await user.type(screen.getByLabelText(/Acres Treated/i), "40");
+    await user.type(
+      screen.getByLabelText(/Requester Name/i),
+      "Acme Producer Co."
+    );
+    await user.type(
+      screen.getByLabelText(/Requester Address/i),
+      "1234 Main St, Columbia, MO 65201"
+    );
+
+    // Now the top-right Save Draft button is enabled. Use it (not the stepper
+    // Next, which is still on Step 3) so the test exercises the same outer
+    // button real users click from anywhere in the form.
+    const saveButton = screen.getByTestId("save-draft-button");
+    await waitFor(() => expect(saveButton.hasAttribute("disabled")).toBe(false));
+    await user.click(saveButton);
 
     // Wait for the navigation off /records/new to complete, then read the
     // persisted record straight from Dexie to verify the product fields landed

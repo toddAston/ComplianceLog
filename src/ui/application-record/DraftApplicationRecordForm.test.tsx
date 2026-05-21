@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { authenticateForTests } from "../session/testAuth";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../../App";
@@ -374,11 +375,23 @@ describe("DraftApplicationRecordForm weather capture", () => {
 
 describe("App + RecordCreatePage integration", () => {
   beforeEach(() => {
+    // Pre-authenticate as a contractor so RequireAuth doesn't bounce the
+    // deep-linked route to /login before the test starts.
+    authenticateForTests("contractor");
     window.history.pushState({}, "", "/records/new");
   });
 
+  // Walks the stepper through every step, filling each required field so the
+  // contractor-side strict Save Draft gate is satisfied at the end. The gate
+  // requires: farm + field + product (form-level), plus the MISSING_REQUIRED_FIELD
+  // compliance failures at severity error — Date Applied, Start/End Time, Target
+  // Pest, Rate, Total, Acres Treated, Requester Name + Address, plus the Step 5
+  // attestation. Weather entries are advisory (severity warning), so this
+  // walker leaves them blank for the "minimum saveable draft" cases that care
+  // about that path; specific tests that need weather can fill it themselves.
   async function fillStepperDraft() {
     const user = userEvent.setup();
+    // Step 1 — Farm & Field
     const farmSelect = (await screen.findByLabelText(/Farm/i)) as HTMLSelectElement;
     await waitFor(() => {
       expect(
@@ -393,8 +406,9 @@ describe("App + RecordCreatePage integration", () => {
       ).toBe(true);
     });
     await user.selectOptions(fieldSelect, "field-7");
-
     await user.click(screen.getByRole("button", { name: /Next/i }));
+
+    // Step 2 — Product (+ acknowledge no SLN so the picker isn't unconfirmed)
     const productSelect = (await screen.findByLabelText(/Product/i)) as HTMLSelectElement;
     await waitFor(() => {
       expect(
@@ -404,6 +418,23 @@ describe("App + RecordCreatePage integration", () => {
       ).toBe(true);
     });
     await user.selectOptions(productSelect, "product-example-herbicide-4l");
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+
+    // Step 3 — Application Details
+    await user.type(screen.getByLabelText(/Time Start/i), "08:30");
+    await user.type(screen.getByLabelText(/Time End/i), "11:30");
+    await user.type(screen.getByLabelText(/Target Pest/i), "Waterhemp");
+    await user.type(screen.getByLabelText(/Rate per Acre/i), "22");
+    await user.type(screen.getByLabelText(/Total Amount/i), "880");
+    await user.type(screen.getByLabelText(/Acres Treated/i), "40");
+    await user.type(
+      screen.getByLabelText(/Requester Name/i),
+      "Acme Producer Co."
+    );
+    await user.type(
+      screen.getByLabelText(/Requester Address/i),
+      "1234 Main St, Columbia, MO 65201"
+    );
     return user;
   }
 
@@ -658,6 +689,7 @@ describe("DraftApplicationRecordForm Product Autocomplete", () => {
 
 describe("RecordCreatePage compliance gate", () => {
   beforeEach(() => {
+    authenticateForTests("contractor");
     window.history.pushState({}, "", "/records/new");
   });
 

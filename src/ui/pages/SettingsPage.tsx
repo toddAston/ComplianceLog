@@ -1,7 +1,5 @@
+import { Link } from "react-router-dom";
 import { useSession } from "../session/SessionContext";
-import { FarmManager } from "../farm/FarmManager";
-import { ContractorManager } from "../contractor/ContractorManager";
-import { DEMO_ORG_ID } from "../../db/seed";
 
 export function SettingsPage() {
   const { role, actor } = useSession();
@@ -51,21 +49,89 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {/* Manager-only sections */}
+      {/* Manager-only quick links to the dedicated management pages. Both
+          flows previously lived inline on this page; they were extracted to
+          /farms and /contractors so Settings stays focused on profile/account
+          configuration. */}
       {role === "manager" && (
-        <>
-          <section style={{ marginBottom: 32 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>Farm Management</h2>
-            <FarmManager organizationId={DEMO_ORG_ID} />
-          </section>
-
-          <section style={{ marginBottom: 32 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>Contractors</h2>
-            <ContractorManager organizationId={DEMO_ORG_ID} />
-          </section>
-        </>
+        <section style={{ marginBottom: 32 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
+            Organization
+          </h2>
+          <div
+            style={{
+              backgroundColor: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 8,
+              padding: 16,
+              boxShadow: "var(--shadow-card)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <SettingsLink
+              to="/farms"
+              testid="settings-link-farms"
+              label="Farm Management"
+              hint="Add or rename farms and field sites."
+            />
+            <SettingsLink
+              to="/contractors"
+              testid="settings-link-contractors"
+              label="Contractors"
+              hint="Invite contractor companies and review their applicators."
+            />
+          </div>
+        </section>
       )}
     </div>
+  );
+}
+
+function SettingsLink({
+  to,
+  label,
+  hint,
+  testid,
+}: {
+  to: string;
+  label: string;
+  hint: string;
+  testid?: string;
+}) {
+  return (
+    <Link
+      to={to}
+      data-testid={testid}
+      style={{
+        textDecoration: "none",
+        color: "inherit",
+        padding: "12px 14px",
+        borderRadius: 6,
+        border: "1px solid var(--color-border)",
+        backgroundColor: "var(--color-background)",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 16,
+        cursor: "pointer",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--color-text-secondary)",
+            marginTop: 2,
+          }}
+        >
+          {hint}
+        </div>
+      </div>
+      <span style={{ color: "var(--color-text-secondary)", fontSize: 18 }}>›</span>
+    </Link>
   );
 }
 

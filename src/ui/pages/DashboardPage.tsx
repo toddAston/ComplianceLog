@@ -120,7 +120,30 @@ export function DashboardPage() {
                 Review Records
               </button>
             </Link>
-            <Link to="/settings" style={{ textDecoration: "none" }}>
+            <Link
+              to="/contractors"
+              style={{ textDecoration: "none" }}
+              data-testid="dashboard-invite-contractors"
+            >
+              <button style={{
+                height: 40,
+                padding: "0 16px",
+                backgroundColor: "transparent",
+                color: "var(--color-primary)",
+                border: "1px solid var(--color-primary)",
+                borderRadius: 6,
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}>
+                Invite Contractors
+              </button>
+            </Link>
+            <Link
+              to="/farms"
+              style={{ textDecoration: "none" }}
+              data-testid="dashboard-manage-farms"
+            >
               <button style={{
                 height: 40,
                 padding: "0 16px",

@@ -1,18 +1,30 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../session/SessionContext";
 import { SyncControls } from "../system/SyncControls";
 import { MobileMenu } from "./MobileMenu";
 
 export function AppHeader() {
-  const { role, actor } = useSession();
+  const { role, actor, logout } = useSession();
   const location = useLocation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const handleSignOut = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   const navLinks = [
     { to: "/dashboard", label: "Dashboard" },
     { to: "/records", label: "Records" },
-    ...(role === "manager" ? [{ to: "/reviews", label: "Reviews" }] : []),
+    ...(role === "manager"
+      ? [
+          { to: "/reviews", label: "Reviews" },
+          { to: "/farms", label: "Farms" },
+          { to: "/contractors", label: "Contractors" },
+        ]
+      : []),
     { to: "/settings", label: "Settings" },
   ];
 
@@ -118,6 +130,22 @@ export function AppHeader() {
           >
             {actor.displayName}
           </span>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            data-testid="sign-out-button"
+            style={{
+              fontSize: 12,
+              padding: "4px 10px",
+              backgroundColor: "transparent",
+              color: "var(--color-text-secondary)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 6,
+              cursor: "pointer",
+            }}
+          >
+            Sign out
+          </button>
         </div>
       </header>
 
